@@ -84,24 +84,9 @@ La URL de la aplicación acepta parámetros GET para preconfigurar filtros. Esto
 
 ### Ejemplos de enlaces directos
 
-**Gasolineras más baratas de Manlleu ordenadas por precio:**
-```
-https://tu-usuario.github.io/miteco-carburantes/?municipio=Manlleu&combustible=gasolina95
-```
-
-**Todas las estaciones GM OIL de España con diésel:**
-```
-https://tu-usuario.github.io/miteco-carburantes/?rotulo=GM+OIL&combustible=gasoleoA
-```
-
 **Estaciones Esclatoil y Bonpreu en Gasolina 95:**
 ```
 https://tu-usuario.github.io/miteco-carburantes/?rotulo=ESCLATOIL|BONPREU&combustible=gasolina95
-```
-
-**Vista tabla, agrupada por municipio, provincia de Girona:**
-```
-https://tu-usuario.github.io/miteco-carburantes/?provincia=GIRONA&agrupar=municipio&vista=tabla
 ```
 
 **Las 10 más baratas de Barcelona ciudad (diésel), vista mapa:**
@@ -113,29 +98,6 @@ https://tu-usuario.github.io/miteco-carburantes/?municipio=Barcelona&combustible
 ```
 https://tu-usuario.github.io/miteco-carburantes/?municipio=Manlleu&combustible=gasolina95&format=json
 ```
-
----
-
-## Cómo publicar en GitHub Pages
-
-1. Crea un repositorio en GitHub (puede ser público o privado con GitHub Pro).
-2. Sube todos los archivos del proyecto:
-   ```
-   index.html
-   css/styles.css
-   js/api.js
-   js/map.js
-   js/chart.js
-   js/app.js
-   ```
-3. Ve a **Settings → Pages** en tu repositorio.
-4. En "Source", selecciona la rama `main` (o `master`) y la carpeta raíz `/`.
-5. Guarda. En unos segundos la app estará disponible en:
-   ```
-   https://tu-usuario.github.io/nombre-del-repositorio/
-   ```
-
-> **Nota importante sobre geolocalización:** La función "Mi ubicación" solo funciona en conexiones **HTTPS**. GitHub Pages sirve siempre con HTTPS, así que en producción funcionará correctamente. En local con `python -m http.server` puede fallar porque es HTTP.
 
 ---
 
