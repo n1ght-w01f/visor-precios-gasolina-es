@@ -2,8 +2,6 @@
 
 Aplicación web estática (HTML + CSS + JS puro, sin frameworks ni backend) que descarga y muestra en tiempo real los precios oficiales de todas las gasolineras de España, según los datos publicados por el **Ministerio para la Transición Ecológica y el Reto Demográfico (MITECO)**.
 
-Compatible con **GitHub Pages** y cualquier servidor de archivos estáticos.
-
 ---
 
 ## ¿Qué hace?
