@@ -12,7 +12,6 @@ Aplicación web estática (HTML + CSS + JS puro, sin frameworks ni backend) que 
 - Calcula estadísticas: precio mínimo, precio medio, precio máximo y **ahorro potencial** por llenar un depósito de 50L comparado con la media.
 - Permite ordenar y agrupar resultados por municipio, marca o provincia.
 - Guarda gasolineras favoritas en el navegador (sin necesidad de cuenta ni login).
-- Exporta los resultados filtrados a **CSV** o **JSON**.
 - Genera un enlace compartible con todos los filtros aplicados.
 
 ---
@@ -40,16 +39,18 @@ Todos los filtros se aplican **en memoria** sobre los 11.000+ registros ya desca
 
 Los filtros disponibles son:
 - **Campo de búsqueda libre**: busca en rótulo, municipio, dirección y código postal.
-- **Chips de marcas rápidas**: GM OIL, Esclatoil/Bonpreu, Plenoil, Ballenoil, Petroprix, Repsol, Cepsa, BP, Galp, Shell, Alcampo, Carrefour.
 - **Selector de provincia** y luego **selector de municipio** (se rellena automáticamente según la provincia elegida).
 - **Tipo de combustible** (barra superior con pestañas).
+- **Modo GPS en tiempo real**: al pulsar "Mi ubicación", la app sigue tu posición continuamente (`watchPosition`) y muestra solo las gasolineras dentro del radio que configures con el deslizador (2–50 km), actualizándose en tiempo real — pensado para usarlo mientras conduces. Mientras está activo, los filtros de provincia, municipio y búsqueda se bloquean y quedan en gris; pulsa de nuevo el botón para volver a los filtros manuales.
 - **Ordenación**: más barato primero, más caro primero, por distancia (requiere activar ubicación GPS), por nombre, por municipio.
 - **Agrupación**: sin agrupar, por municipio, por rótulo/marca, por provincia.
 - **Solo favoritas**: muestra únicamente las gasolineras que hayas marcado como favoritas.
 
 ### Mapa interactivo (`js/map.js`)
 
-Usa **Leaflet** con tiles de CartoDB Voyager. Los marcadores se agrupan automáticamente con **MarkerCluster** — cuando hay muchos, aparecen como burbujas con el número de gasolineras. Al acercar el zoom se despliegan individualmente.
+Usa **Leaflet** con tiles de **OpenStreetMap** (libres, sin API key ni registro). Los marcadores se agrupan automáticamente con **MarkerCluster** — cuando hay muchos, aparecen como burbujas con el número de gasolineras. Al acercar el zoom se despliegan individualmente.
+
+En pantallas pequeñas (móvil), el mapa se muestra **siempre al principio** (antes de la lista de precios) e incluye un **botón para ocultar/mostrar** el mapa.
 
 Cada marcador tiene un color según el precio relativo a la búsqueda actual:
 - 🟢 **Verde**: precio en el 25% más barato de los resultados.
@@ -80,7 +81,6 @@ La URL de la aplicación acepta parámetros GET para preconfigurar filtros. Esto
 | `orden` | `price_asc`, `price_desc`, `rotulo_asc`, `municipio_asc`, `distance_asc` | Criterio de ordenación |
 | `agrupar` | `none`, `municipio`, `rotulo`, `provincia` | Agrupa los resultados |
 | `vista` | `split`, `list`, `tabla`, `map` | Vista inicial al abrir |
-| `format` | `json` | Activa el modo desarrollador: muestra el JSON en bruto sin la interfaz visual |
 
 ### Ejemplos de enlaces directos
 
@@ -92,11 +92,6 @@ https://tu-usuario.github.io/miteco-carburantes/?rotulo=ESCLATOIL|BONPREU&combus
 **Las 10 más baratas de Barcelona ciudad (diésel), vista mapa:**
 ```
 https://tu-usuario.github.io/miteco-carburantes/?municipio=Barcelona&combustible=gasoleoA&vista=map
-```
-
-**Obtener los datos en formato JSON puro (para usar desde otra app o script):**
-```
-https://tu-usuario.github.io/miteco-carburantes/?municipio=Manlleu&combustible=gasolina95&format=json
 ```
 
 ---

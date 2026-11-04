@@ -134,9 +134,15 @@
           <option value="">Todos los Municipios</option>
         </select>
 
-        <button id="btn-get-location" class="btn btn-outline btn-sm" title="Buscar gasolineras cerca de mi GPS">
+        <button id="btn-get-location" class="btn btn-outline btn-sm" title="Activar modo GPS en tiempo real">
           📍 Mi ubicación
         </button>
+
+        <div id="gps-radius-panel" class="gps-radius-panel" hidden>
+          <span class="gps-radius-label">📡 Radio</span>
+          <input type="range" id="gps-radius-slider" class="gps-radius-slider" min="2" max="50" step="1" value="10">
+          <span class="gps-radius-value" id="gps-radius-value">10 km</span>
+        </div>
 
         <select id="select-sort-order" class="select-filter" aria-label="Ordenar resultados">
           <option value="price_asc">💰 Precio: Más barato primero</option>
@@ -154,12 +160,8 @@
         </select>
       </div>
 
-      <!-- Secondary Row: Quick Brands & View Tabs -->
+      <!-- Secondary Row: View Tabs & Actions -->
       <div class="filters-secondary-row">
-        <div class="brand-chips-scroll" id="brand-chips-container">
-          <!-- Dynamically populated brand chips -->
-        </div>
-
         <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
           <button id="btn-filter-favorites" class="btn btn-outline btn-sm">
             ⭐ Favoritas (<span id="fav-counter-badge">0</span>)
@@ -173,15 +175,8 @@
           </div>
 
           <button id="btn-open-api-modal" class="btn btn-primary btn-sm"
-            title="Obtener enlace compartible o endpoint JSON">
-            🔗 Compartir / API
-          </button>
-
-          <button id="btn-export-csv" class="btn btn-outline btn-sm" title="Descargar datos en CSV">
-            📥 CSV
-          </button>
-          <button id="btn-export-json" class="btn btn-outline btn-sm" title="Descargar datos en JSON">
-            { } JSON
+            title="Obtener el enlace de esta búsqueda para compartir">
+            🔗 Compartir
           </button>
         </div>
       </div>
@@ -242,10 +237,6 @@
             <span id="table-results-counter">0 estaciones encontradas</span>
             <span class="table-group-badge" id="table-group-status-badge">Sin agrupar</span>
           </div>
-          <div class="table-actions-group">
-            <button id="table-btn-export-csv" class="btn btn-outline btn-sm">📥 Exportar CSV</button>
-            <button id="table-btn-export-json" class="btn btn-outline btn-sm">{ } Exportar JSON</button>
-          </div>
         </div>
 
         <div class="table-responsive-scroll">
@@ -284,6 +275,9 @@
 
     <!-- Right Column: Interactive Leaflet Map -->
     <section class="map-pane-container" aria-label="Mapa de Gasolineras">
+      <button id="btn-toggle-map" class="map-toggle-btn" title="Ocultar / mostrar mapa">
+        🗺️ <span>Ocultar mapa</span>
+      </button>
       <div id="fuel-map"></div>
     </section>
 
@@ -304,9 +298,8 @@
     <div class="modal-dialog modal-dialog-lg">
       <button class="modal-close-icon-btn" id="api-modal-close-btn" aria-label="Cerrar modal">✕</button>
       <div class="modal-api-header">
-        <h3>🔗 Compartir Consulta y Endpoint JSON API</h3>
-        <p>Utiliza estos enlaces para compartir esta búsqueda filtrada o consumirla desde otras aplicaciones como una
-          API REST procesada.</p>
+        <h3>🔗 Compartir Consulta</h3>
+        <p>Copia este enlace para compartir con cualquier persona esta búsqueda con todos sus filtros aplicados. Al abrirlo, se reconstruirá exactamente el mismo resultado.</p>
       </div>
 
       <div class="api-modal-section">
@@ -316,71 +309,7 @@
           <button id="btn-copy-web-url" class="btn btn-primary btn-sm">📋 Copiar Enlace</button>
         </div>
       </div>
-
-      <div class="api-modal-section">
-        <label class="api-field-label">🖥️ Vista JSON Visual (<code>?format=json-visual</code>) — para desarrolladores:</label>
-        <p class="api-field-hint">Abre la interfaz visual del JSON procesado con botones de copia. Útil para inspeccionar los datos manualmente.</p>
-        <div class="api-copy-row">
-          <input type="text" id="input-shareable-visual-url" class="api-url-input" readonly>
-          <button id="btn-copy-visual-url" class="btn btn-outline btn-sm">📋 Copiar</button>
-          <a id="btn-open-visual-url" class="btn btn-outline btn-sm" target="_blank">↗ Abrir</a>
-        </div>
-      </div>
-
-      <div class="api-modal-section">
-        <label class="api-field-label">⚡ API JSON Puro (<code>?format=json</code>) — para scripts y automatizaciones:</label>
-        <p class="api-field-hint">Devuelve <strong>solo el JSON</strong>, sin HTML. Úsalo desde Python, curl, o cualquier cliente HTTP.</p>
-        <div class="api-copy-row">
-          <input type="text" id="input-shareable-api-url" class="api-url-input" readonly>
-          <button id="btn-copy-api-url" class="btn btn-primary btn-sm">📋 Copiar API URL</button>
-          <a id="btn-open-api-url" class="btn btn-outline btn-sm" target="_blank">↗ Abrir JSON</a>
-        </div>
-      </div>
-
-      <div class="api-modal-section">
-        <label class="api-field-label">🐍 Ejemplo Python:</label>
-        <pre class="api-code-snippet"><code>import requests, json
-
-url = "<la URL de API JSON Pure de arriba>"
-response = requests.get(url)
-data = response.json()  # o json.loads(response.text)
-
-print(f"{data['total_resultados']} estaciones")
-for s in data['datos'][:5]:
-    print(s['rotulo'], s['municipio'], s['precios'])</code></pre>
-      </div>
-
-      <div class="api-modal-section">
-        <label class="api-field-label">💻 Ejemplo JavaScript (fetch):</label>
-        <pre class="api-code-snippet"><code id="snippet-js-fetch">// Ejemplo de petición fetch al endpoint JSON:
-fetch('...')
-  .then(res => res.json())
-  .then(data => console.log('Estaciones recibidas:', data.total_resultados, data.datos));</code></pre>
-      </div>
-
-      <div class="api-modal-section">
-        <label class="api-field-label">👁️ Vista previa del JSON procesado en tiempo real:</label>
-        <div class="json-preview-container">
-          <pre id="api-json-live-preview">Cargando...</pre>
-        </div>
-      </div>
     </div>
-  </div>
-
-  <!-- Raw Developer JSON View Screen (Activated when ?format=json-visual) -->
-  <div id="raw-json-screen" class="raw-json-container hidden">
-    <div class="raw-json-toolbar">
-      <div class="raw-json-meta">
-        <span class="json-status-pill">● 200 OK (JSON API Mode)</span>
-        <span id="raw-json-meta-count">0 resultados</span>
-      </div>
-      <div class="raw-json-actions">
-        <button id="btn-raw-json-copy" class="btn btn-sm btn-outline">📋 Copiar JSON</button>
-        <button id="btn-raw-json-download" class="btn btn-sm btn-outline">📥 Descargar .json</button>
-        <button id="btn-raw-json-switch-ui" class="btn btn-sm btn-primary">🖥️ Ver Interfaz Web Completa</button>
-      </div>
-    </div>
-    <pre id="raw-json-content-area" class="raw-json-pre"></pre>
   </div>
 
   <!-- Leaflet & MarkerCluster JS CDN -->
