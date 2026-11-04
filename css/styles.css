@@ -174,7 +174,7 @@ button, input, select {
 }
 
 .header-container {
-  max-width: 1600px;
+  width: 100%;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -266,7 +266,7 @@ button, input, select {
 }
 
 .fuels-scroll-wrapper {
-  max-width: 1600px;
+  width: 100%;
   margin: 0 auto;
   display: flex;
   gap: 0.5rem;
@@ -314,7 +314,7 @@ button, input, select {
 }
 
 .filters-container {
-  max-width: 1600px;
+  width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -386,37 +386,6 @@ button, input, select {
   flex-wrap: wrap;
 }
 
-.brand-chips-scroll {
-  display: flex;
-  gap: 0.4rem;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.brand-chip {
-  padding: 0.3rem 0.7rem;
-  font-size: 0.75rem;
-  border-radius: var(--radius-full);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
-
-.brand-chip:hover {
-  background: var(--bg-surface-elevated);
-  color: var(--text-primary);
-}
-
-.brand-chip.active {
-  background: rgba(59, 130, 246, 0.2);
-  color: var(--accent-primary);
-  border-color: var(--accent-primary);
-  font-weight: 600;
-}
-
 .view-mode-tabs {
   display: flex;
   background: var(--bg-surface);
@@ -444,12 +413,12 @@ button, input, select {
 /* Main Application Layout (Split View Grid) */
 .app-main-content {
   flex: 1;
-  max-width: 1600px;
   width: 100%;
   margin: 0 auto;
   padding: 1rem 1.5rem;
   display: grid;
-  grid-template-columns: 480px 1fr;
+  /* Full width usage: fixed comfortable list column, rest for the map */
+  grid-template-columns: minmax(460px, 34%) 1fr;
   gap: 1.25rem;
   min-height: calc(100vh - 200px);
 }
@@ -1330,7 +1299,7 @@ button, input, select {
 /* Responsive Media Queries */
 @media (max-width: 1100px) {
   .app-main-content {
-    grid-template-columns: 420px 1fr;
+    grid-template-columns: minmax(400px, 38%) 1fr;
   }
 }
 
@@ -1340,9 +1309,50 @@ button, input, select {
     padding: 0.75rem;
   }
 
+  /* Mobile: map always first (above the results list) */
   .map-pane-container {
-    height: 400px;
-    min-height: 400px;
+    order: -1;
+    height: min(42vh, 360px);
+    min-height: 280px;
+  }
+
+  #fuel-map {
+    min-height: 0;
+  }
+
+  /* Collapsed map strip (toggle button) */
+  .map-pane-container.map-collapsed {
+    height: 52px;
+    min-height: 52px;
+  }
+
+  .map-pane-container.map-collapsed #fuel-map {
+    visibility: hidden;
+  }
+
+  .map-pane-container.map-collapsed .leaflet-control-container {
+    display: none;
+  }
+
+  /* Floating toggle button over the map (mobile only) */
+  .map-toggle-btn {
+    display: inline-flex;
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 600;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-glass);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
   }
 
   .list-pane-container {
@@ -1354,6 +1364,10 @@ button, input, select {
     align-items: stretch;
   }
 
+  .gps-radius-panel[hidden] {
+    display: none;
+  }
+
   .header-container {
     flex-direction: column;
     align-items: flex-start;
@@ -1363,6 +1377,84 @@ button, input, select {
     width: 100%;
     justify-content: space-between;
   }
+}
+
+/* Hide the map toggle button entirely on desktop */
+@media (min-width: 901px) {
+  .map-toggle-btn {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   OpenStreetMap tiles styling
+   ========================================================================== */
+
+/* Attribution (legally required for OSM) */
+.leaflet-control-attribution {
+  background: rgba(10, 15, 29, 0.75) !important;
+  color: #94a3b8 !important;
+  font-size: 0.65rem !important;
+  font-family: var(--font-body);
+  padding: 0 6px !important;
+  border-radius: 6px 0 0 0;
+}
+
+.leaflet-control-attribution a {
+  color: #3b82f6 !important;
+}
+
+/* Dark theme: convert light OSM tiles into a dark map */
+[data-theme="dark"] #fuel-map .leaflet-tile {
+  filter: invert(1) hue-rotate(185deg) brightness(0.92) contrast(0.92) saturate(0.7);
+}
+
+[data-theme="dark"] #fuel-map .leaflet-control-attribution {
+  background: rgba(10, 15, 29, 0.85) !important;
+}
+
+/* GPS Live-Tracking Mode Components */
+
+/* Radius slider panel (visible only while tracking) */
+.gps-radius-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  padding: 0.35rem 0.9rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.gps-radius-panel[hidden] {
+  display: none;
+}
+
+.gps-radius-label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gps-radius-slider {
+  width: 130px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.gps-radius-value {
+  font-weight: 700;
+  color: var(--accent-primary);
+  min-width: 46px;
+}
+
+/* Grayed-out manual filters while GPS tracking is active */
+.filter-locked {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+  cursor: not-allowed !important;
 }
 
 /* ==========================================================================
