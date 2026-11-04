@@ -2441,4 +2441,178 @@ button, input, select {
   color: var(--accent-primary);
 }
 
+/* ============================================================
+   Ajustes extra móviles (pulido final) — Ruta de Papel
+   ============================================================ */
+@media (max-width: 900px) {
+  /* Menos aire lateral para ganar espacio útil */
+  .app-header,
+  .fuels-nav-bar,
+  .filter-dashboard-bar {
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
+  }
+
+  /* La fila de acciones del header puede necesitar dos líneas */
+  .header-actions-area {
+    flex-wrap: wrap;
+    row-gap: 0.45rem;
+  }
+
+  .live-status-pill {
+    font-size: 0.7rem;
+    padding: 0.28rem 0.6rem;
+    white-space: nowrap;
+  }
+
+  /* Controles de filtros a ancho completo, sin mínimos que desborden */
+  .filters-primary-row > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .multi-picker {
+    min-width: 0;
+  }
+
+  .gps-radius-panel {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  .gps-radius-slider {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  /* Botones de vista más compactos */
+  .view-tab-btn {
+    padding: 0.38rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  /* El banner de ahorro envuelve el texto en vez de apretarse */
+  .savings-banner {
+    flex-wrap: wrap;
+    justify-content: center;
+    text-align: center;
+    gap: 0.2rem 0.6rem;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Header compacto */
+  .brand-subtitle {
+    display: none;
+  }
+
+  .header-actions-area {
+    gap: 0.35rem;
+  }
+
+  .header-actions-area .btn {
+    padding: 0.33rem 0.5rem;
+    font-size: 0.73rem;
+    font-weight: 800;
+  }
+
+  /* Without backdrop-filter the bar stops trapping position:fixed
+     descendants, letting the picker panels dock to the real viewport */
+  .filter-dashboard-bar {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--bg-glass-card);
+  }
+
+  .style-selector {
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: 120px;
+  }
+
+  /* Menú de combustibles más compacto */
+  .fuel-pill-btn {
+    padding: 0.33rem 0.6rem;
+    font-size: 0.77rem;
+    font-weight: 700;
+  }
+
+  /* Panel de los pickers como "bottom sheet" a pantalla completa;
+     esquinas de papel redondeadas solo arriba */
+  .picker-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    border-radius: 18px 22px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    max-height: 72vh;
+    box-shadow: 0 -8px 26px rgba(0, 0, 0, 0.35);
+  }
+
+  .picker-options {
+    max-height: 46vh;
+  }
+
+  /* Tarjetas de gasolinera: que nada se recorte */
+  .card-address {
+    max-width: 100%;
+  }
+
+  .card-price-hero {
+    min-width: 70px;
+  }
+
+  .price-val {
+    font-size: 1.12rem;
+  }
+
+  .card-footer-actions {
+    flex-wrap: wrap;
+  }
+
+  .btn-card-action {
+    flex: 1 1 40%;
+    min-width: 0;
+  }
+
+  /* Barra de paginación de la lista, apilada */
+  .list-pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .list-count-info {
+    text-align: center;
+  }
+
+  .list-pagination-controls {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .list-page-size {
+    flex: 1 1 100%;
+  }
+
+  /* Estadísticas: números más compactos */
+  .stat-metric-card {
+    padding: 0.55rem 0.35rem;
+  }
+
+  .stat-value {
+    font-size: 0.92rem;
+  }
+}
+
+
 
