@@ -439,6 +439,11 @@ class MitecoAPI {
       favoriteIds = []
     } = criteria;
 
+    // Province & Municipality accept a single value OR an array of values
+    // (multi-select pickers). A station passes when it matches ANY entry.
+    const provinces = Array.isArray(province) ? province : (province ? [province] : []);
+    const municipios = Array.isArray(municipio) ? municipio : (municipio ? [municipio] : []);
+
     const normSearch = this.normalizeText(searchText);
     const brandRegex = brandQuery ? new RegExp(brandQuery, 'i') : null;
     const onlyFavorites = criteria.onlyFavorites || false;
@@ -471,13 +476,13 @@ class MitecoAPI {
         continue;
       }
 
-      // Province filter
-      if (province && s.provincia !== province) {
+      // Province filter (multi-select: match ANY of the chosen provinces)
+      if (provinces.length && !provinces.includes(s.provincia)) {
         continue;
       }
 
-      // Municipality filter
-      if (municipio && s.municipio !== municipio) {
+      // Municipality filter (multi-select: match ANY of the chosen municipalities)
+      if (municipios.length && !municipios.includes(s.municipio)) {
         continue;
       }
 
@@ -495,7 +500,16 @@ class MitecoAPI {
       let distance = null;
       if (userLocation && userLocation.lat && userLocation.lng && s.hasCoords) {
         distance = this.calculateDistance(userLocation.lat, userLocation.lng, s.lat, s.lng);
-        if (maxDistance !== null && distance > maxDistance) {
+      }
+
+      // Distance radius filter: strictly exclude stations whose real distance
+      // cannot be computed (broken/missing coordinates in the official data)
+      // and any station beyond the configured radius.
+      if (maxDistance !== null) {
+        if (distance === null) {
+          continue;
+        }
+        if (distance > maxDistance) {
           continue;
         }
       }
@@ -646,6 +660,19 @@ class MitecoAPI {
   getMunicipalitiesList(province) {
     if (!province || !this.municipalities.has(province)) return [];
     return Array.from(this.municipalities.get(province)).sort((a, b) => a.localeCompare(b));
+  }
+
+  /**
+   * Get every municipality in the dataset (union of all provinces),
+   * sorted alphabetically. Used by the multi-select municipality picker
+   * when no province restrictions are active.
+   */
+  getAllMunicipalitiesList() {
+    const union = new Set();
+    for (const set of this.municipalities.values()) {
+      for (const m of set) union.add(m);
+    }
+    return Array.from(union).sort((a, b) => a.localeCompare(b));
   }
 }
 

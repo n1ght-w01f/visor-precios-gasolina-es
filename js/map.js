@@ -34,12 +34,96 @@ class MitecoMap {
     // Custom modern zoom control in top-right
     L.control.zoom({ position: 'topright' }).addTo(this.map);
 
-    // OpenStreetMap raster tiles (required legal attribution)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      subdomains: 'abc',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+    // OpenStreetMap-based base layers (all free, no API key needed).
+    // Each defines whether it should keep the dark-theme tile inversion.
+    this.BASE_LAYERS = {
+      osm: {
+        name: 'Est\u00e1ndar (OSM)',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        options: {
+          maxZoom: 19, subdomains: 'abc',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+        },
+        invertDark: true
+      },
+      osmfr: {
+        name: 'OSM Francia',
+        url: 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+        options: {
+          maxZoom: 20, subdomains: 'abc',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> / OpenStreetMap France'
+        },
+        invertDark: true
+      },
+      hot: {
+        name: 'Humanitario (HOT)',
+        url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+        options: {
+          maxZoom: 19, subdomains: 'abc',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, style <a href="https://www.hotosm.org/" target="_blank" rel="noopener">HOT</a>'
+        },
+        invertDark: true
+      },
+      topo: {
+        name: 'Topogr\u00e1fico (OpenTopoMap)',
+        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        options: {
+          maxZoom: 17, subdomains: 'abc',
+          attribution: '&copy; <a href="https://www.opentopomap.org" target="_blank" rel="noopener">OpenTopoMap</a> (CC-BY-SA), datos &copy; OpenStreetMap'
+        },
+        invertDark: false
+      },
+      sat: {
+        name: 'Sat\u00e9lite (Esri)',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        options: {
+          maxZoom: 18,
+          attribution: 'Im&aacute;genes &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a>, Maxar, Earthstar Geographics'
+        },
+        invertDark: false
+      },
+      claro: {
+        name: 'Minimalista claro (Esri)',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        options: {
+          maxZoom: 16,
+          attribution: 'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> &mdash; Esri, HERE, Garmin, FAO'
+        },
+        invertDark: true
+      }
+    };
+
+    // Build all layer instances (inactive ones fetch no tiles)
+    this.baseLayers = {};
+    const layersByName = {};
+    for (const [id, def] of Object.entries(this.BASE_LAYERS)) {
+      this.baseLayers[id] = L.tileLayer(def.url, def.options);
+      layersByName[def.name] = this.baseLayers[id];
+    }
+
+    // Restore the last layer chosen by the user (or default to OSM)
+    let initialId = localStorage.getItem('miteco_map_layer');
+    if (!this.BASE_LAYERS[initialId]) initialId = 'osm';
+    this.currentBaseId = initialId;
+    this.map.addLayer(this.baseLayers[initialId]);
+
+    // Foldable layers list control (bottom-left, away from zoom & app buttons)
+    L.control.layers(layersByName, {}, {
+      position: 'bottomleft',
+      collapsed: true
     }).addTo(this.map);
+
+    // Persist the user's choice + toggle the dark-invert exemption
+    this.map.on('baselayerchange', (e) => {
+      const id = Object.keys(this.baseLayers).find(k => this.baseLayers[k] === e.layer);
+      if (!id) return;
+      this.currentBaseId = id;
+      try {
+        localStorage.setItem('miteco_map_layer', id);
+      } catch (err) { /* storage may be unavailable */ }
+      this.updateTileInvertExemption();
+    });
+    this.updateTileInvertExemption();
 
     // Initialize MarkerClusterGroup with custom styling
     this.markersGroup = L.markerClusterGroup({
@@ -68,6 +152,17 @@ class MitecoMap {
     setTimeout(() => {
       this.map.invalidateSize();
     }, 200);
+  }
+
+  /**
+   * Some tile styles must NOT be inverted in dark mode (satellite,
+   * colored topo maps...). Controlled via a class on the map container.
+   */
+  updateTileInvertExemption() {
+    const def = this.BASE_LAYERS[this.currentBaseId];
+    const container = document.getElementById(this.containerId);
+    if (!container) return;
+    container.classList.toggle('no-invert', !(def && def.invertDark));
   }
 
   /**

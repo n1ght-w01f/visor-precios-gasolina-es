@@ -38,17 +38,21 @@ class MitecoAnalytics {
     }
 
     const maxCount = Math.max(...bins, 1);
-    const chartHeight = 140;
+    // Extra headroom so the count labels above the bars never get clipped
+    const chartHeight = 150;
     const chartWidth = 320;
+    const topMargin = 24;
+    const bottomMargin = 22;
 
     let barsSvg = '';
     const barWidth = (chartWidth - (binsCount * 3)) / binsCount;
 
     bins.forEach((count, i) => {
       const heightPercent = count / maxCount;
-      const barH = Math.max(4, Math.round(heightPercent * (chartHeight - 30)));
+      const barH = Math.max(4, Math.round(heightPercent * (chartHeight - topMargin - bottomMargin)));
       const x = i * (barWidth + 3) + 15;
-      const y = chartHeight - barH - 20;
+      const y = chartHeight - bottomMargin - barH;
+      const textY = Math.max(y - 5, 11);
       const priceStart = (min + i * step).toFixed(2);
       const priceEnd = (min + (i + 1) * step).toFixed(2);
 
@@ -62,10 +66,12 @@ class MitecoAnalytics {
           <rect x="${x}" y="${y}" width="${barWidth}" height="${barH}" rx="3" fill="${barColor}" class="chart-bar">
             <title>${count} estaciones (${priceStart}€ - ${priceEnd}€)</title>
           </rect>
-          <text x="${x + barWidth / 2}" y="${y - 4}" text-anchor="middle" font-size="9" fill="var(--text-muted)" class="bar-count-text">${count > 0 ? count : ''}</text>
+          <text x="${x + barWidth / 2}" y="${textY}" text-anchor="middle" font-size="9" fill="var(--text-muted)" class="bar-count-text">${count > 0 ? count : ''}</text>
         </g>
       `;
     });
+
+    const axisY = chartHeight - 17;
 
     const svg = `
       <div class="histogram-wrapper">
@@ -73,12 +79,12 @@ class MitecoAnalytics {
           <span class="histogram-title">Distribución de Precios (${fuelTypeInfo.name})</span>
           <span class="histogram-subtitle">${stats.count} estaciones analizadas</span>
         </div>
-        <svg viewBox="0 0 ${chartWidth + 30} ${chartHeight}" class="histogram-svg" preserveAspectRatio="none">
-          <line x1="10" y1="${chartHeight - 19}" x2="${chartWidth + 20}" y2="${chartHeight - 19}" stroke="var(--border-color)" stroke-width="1" />
+        <svg viewBox="0 0 ${chartWidth + 30} ${chartHeight}" class="histogram-svg">
+          <line x1="10" y1="${axisY}" x2="${chartWidth + 20}" y2="${axisY}" stroke="var(--border-color)" stroke-width="1" />
           ${barsSvg}
-          <text x="15" y="${chartHeight - 6}" font-size="10" fill="var(--text-muted)">Mín: ${min.toFixed(3)}€</text>
-          <text x="${(chartWidth + 30) / 2}" y="${chartHeight - 6}" text-anchor="middle" font-size="10" fill="var(--text-muted)">Media: ${stats.avg.toFixed(3)}€</text>
-          <text x="${chartWidth + 15}" y="${chartHeight - 6}" text-anchor="end" font-size="10" fill="var(--text-muted)">Máx: ${max.toFixed(3)}€</text>
+          <text x="15" y="${chartHeight - 5}" font-size="10" fill="var(--text-muted)">Mín: ${min.toFixed(3)}€</text>
+          <text x="${(chartWidth + 30) / 2}" y="${chartHeight - 5}" text-anchor="middle" font-size="10" fill="var(--text-muted)">Media: ${stats.avg.toFixed(3)}€</text>
+          <text x="${chartWidth + 15}" y="${chartHeight - 5}" text-anchor="end" font-size="10" fill="var(--text-muted)">Máx: ${max.toFixed(3)}€</text>
         </svg>
       </div>
     `;

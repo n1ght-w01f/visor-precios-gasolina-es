@@ -62,8 +62,8 @@ class AppController {
       fuelType: 'gasolina95',
       searchText: '',
       brandQuery: '',
-      province: '',
-      municipio: '',
+      provinces: [],   // multi-select: list of province names
+      municipios: [],  // multi-select: list of municipality names (any provincias)
       groupBy: 'none', // 'none', 'municipio', 'rotulo', 'provincia'
       only24h: false,
       onlyFavorites: false,
@@ -72,9 +72,13 @@ class AppController {
       sortBy: 'price_asc', // 'price_asc', 'price_desc', 'distance_asc', 'rotulo_asc', 'municipio_asc'
       currentView: 'split', // 'split', 'list', 'tabla', 'map'
       userLocation: null, // { lat, lng }
-      theme: localStorage.getItem('miteco_theme') || 'dark',
+      theme: localStorage.getItem('miteco_theme') || document.documentElement.getAttribute('data-theme') || 'dark',
       tablePage: 1,
       tablePageSize: 50,
+      listPage: 1,          // current page of the station cards list
+      listPageSize: 30,     // how many cards are shown per page / chunk
+      listLazyAll: false,   // "load all" lazy mode: appends chunks while scrolling
+      listShownCount: 30,   // cards currently rendered in lazy mode
       trackingActive: false,  // GPS live-tracking mode
       watchId: null,          // geolocation.watchPosition handle
       gpsRadius: 10           // user configurable radius in km (default 10)
@@ -83,6 +87,7 @@ class AppController {
     this.currentDataset = null;
     this.searchDebounceTimer = null;
     this.collapsedGroups = new Set();
+    this.pickers = null; // province / municipio multi-select pickers
   }
 
   /**
@@ -91,7 +96,9 @@ class AppController {
   async init() {
     this.readUrlParams();
     this.applyTheme(this.state.theme);
+    this.initStyleSelector();
     this.bindEvents();
+    this.setupPickers();
 
     // Init Map
     this.map.init();
@@ -124,8 +131,8 @@ class AppController {
         }
       }, forceRefresh);
 
-      // Populate province dropdown
-      this.populateProvinceSelect();
+      // Populate the province & municipality multi-select pickers
+      this.populateLocationPickers();
 
       // Update badge
       if (lastUpdateBadge && this.api.lastUpdated) {
@@ -164,8 +171,8 @@ class AppController {
       fuelType: this.state.fuelType,
       searchText: tracking ? '' : this.state.searchText,
       brandQuery: tracking ? '' : this.state.brandQuery,
-      province: tracking ? '' : this.state.province,
-      municipio: tracking ? '' : this.state.municipio,
+      province: tracking ? [] : this.state.provinces,
+      municipio: tracking ? [] : this.state.municipios,
       groupBy: this.state.groupBy,
       only24h: this.state.only24h,
       onlyFavorites: this.state.onlyFavorites,
@@ -180,8 +187,13 @@ class AppController {
     const dataset = this.api.filterStations(criteria);
     this.currentDataset = dataset;
 
-    // Update stations list UI (top 100 for card view performance)
-    this.renderStationsList(dataset.allStationsForMap.slice(0, 100), dataset.fuelTypeInfo, dataset.stats);
+    // Reset list pagination so every new search/profile starts showing the
+    // first cards again (GPS position fixes / filter changes included)
+    this.state.listPage = 1;
+    this.state.listShownCount = this.state.listPageSize;
+
+    // Update stations list UI (pagination & lazy loading handled inside)
+    this.renderStationsList(dataset.allStationsForMap, dataset.fuelTypeInfo, dataset.stats);
 
     // Update Table UI
     this.renderDataTable();
@@ -226,10 +238,15 @@ class AppController {
   }
 
   /**
-   * Render station cards in the list container
+   * Render station cards in the list container.
+   * Supports two modes:
+   *  - Pager: show listPageSize cards per page, navigate with ◀ ▶ buttons.
+   *  - Lazy ("Todas"): render a first chunk, then automatically append the
+   *    next chunk each time the user reaches the bottom of the list.
    */
   renderStationsList(stations, fuelTypeInfo, stats) {
     const listContainer = document.getElementById('stations-cards-list');
+    const pagBar = document.getElementById('list-pagination-bar');
     if (!listContainer) return;
 
     if (!stations || stations.length === 0) {
@@ -245,11 +262,35 @@ class AppController {
       if (btnReset) {
         btnReset.onclick = () => this.resetFilters();
       }
+      if (pagBar) pagBar.hidden = true;
       return;
     }
 
+    if (pagBar) pagBar.hidden = false;
+
+    const total = stations.length;
+    const pageSize = this.state.listPageSize || 30;
+    const lazy = this.state.listLazyAll;
+
+    // Determine which window of stations is currently rendered
+    let startIndex = 0;
+    let shownCount = total;
+    let totalPages = 1;
+    if (lazy) {
+      this.state.listShownCount = this.state.listShownCount || pageSize;
+      shownCount = Math.min(this.state.listShownCount, total);
+    } else {
+      totalPages = Math.ceil(total / pageSize) || 1;
+      if (this.state.listPage > totalPages) this.state.listPage = totalPages;
+      if (this.state.listPage < 1) this.state.listPage = 1;
+      startIndex = (this.state.listPage - 1) * pageSize;
+      shownCount = Math.min(startIndex + pageSize, total) - startIndex;
+    }
+    const visible = stations.slice(startIndex, startIndex + shownCount);
+
     let html = '';
-    stations.forEach((s, rank) => {
+    visible.forEach((s, idx) => {
+      const rank = startIndex + idx;
       const isFav = this.favorites.isFavorite(s.id);
       const tier = this.map.getPriceTier(s.currentPrice, stats);
       const tierBadge = tier === 'cheap' 
@@ -305,7 +346,15 @@ class AppController {
       `;
     });
 
+    // Lazy mode: sentinel row at the bottom that announces the next chunk
+    if (lazy && shownCount < total) {
+      html += `<div id="list-load-sentinel" class="list-lazy-sentinel">⬇ Sigue bajando para cargar más… (${shownCount.toLocaleString()} / ${total.toLocaleString()})</div>`;
+    }
+
     listContainer.innerHTML = html;
+
+    // Update the list pagination controls
+    this.updateListPaginationUI(total, startIndex, shownCount, totalPages, lazy);
 
     // Attach card event listeners
     listContainer.querySelectorAll('.card-fav-btn').forEach(btn => {
@@ -341,6 +390,73 @@ class AppController {
         if (st) this.openStationModal(st);
       };
     });
+
+    // Lazy mode: observe the sentinel row — when it becomes visible
+    // (user reached the bottom) append the next chunk of cards.
+    if (lazy && shownCount < total) {
+      const sentinel = document.getElementById('list-load-sentinel');
+      if (sentinel && 'IntersectionObserver' in window) {
+        const io = new IntersectionObserver((entries) => {
+          if (entries.some(en => en.isIntersecting)) {
+            io.disconnect();
+            this.state.listShownCount = shownCount + pageSize;
+            this.renderListPage();
+          }
+        }, { rootMargin: '160px' });
+        io.observe(sentinel);
+      } else if (sentinel) {
+        // Fallback for very old browsers: manual button
+        sentinel.textContent = '⬇ Cargar más';
+        sentinel.classList.add('clickable');
+        sentinel.onclick = () => {
+          this.state.listShownCount = shownCount + pageSize;
+          this.renderListPage();
+        };
+      }
+    }
+  }
+
+  /**
+   * Refresh only the cards list (pager navigation / lazy append) from the
+   * already-filtered dataset, without re-filtering.
+   */
+  renderListPage() {
+    if (!this.currentDataset) return;
+    this.renderStationsList(
+      this.currentDataset.allStationsForMap,
+      this.currentDataset.fuelTypeInfo,
+      this.currentDataset.stats
+    );
+  }
+
+  /**
+   * Update the pagination bar under the cards list.
+   */
+  updateListPaginationUI(total, startIndex, shownCount, totalPages, lazy) {
+    const info = document.getElementById('list-count-info');
+    const indicator = document.getElementById('list-page-indicator');
+    const prevBtn = document.getElementById('btn-list-prev');
+    const nextBtn = document.getElementById('btn-list-next');
+
+    if (prevBtn) prevBtn.style.display = lazy ? 'none' : '';
+    if (nextBtn) nextBtn.style.display = lazy ? 'none' : '';
+
+    if (info) {
+      info.textContent = lazy
+        ? `Mostrando ${shownCount.toLocaleString()} de ${total.toLocaleString()} estaciones`
+        : `Estaciones ${startIndex + 1} – ${startIndex + shownCount} de ${total.toLocaleString()}`;
+    }
+
+    if (indicator) {
+      indicator.textContent = lazy
+        ? '♾️ Carga continua'
+        : `Página ${this.state.listPage} / ${totalPages}`;
+    }
+
+    if (!lazy) {
+      if (prevBtn) prevBtn.disabled = this.state.listPage <= 1;
+      if (nextBtn) nextBtn.disabled = this.state.listPage >= totalPages;
+    }
   }
 
   /**
@@ -511,44 +627,250 @@ class AppController {
     if (nextBtn) nextBtn.disabled = this.state.tablePage >= totalPages;
   }
 
+  /* ==================================================================
+     Multi-select pickers for Provincia & Municipio
+     - Popup panel with a search box (type-first: great on mobile, when
+       scrolling through thousands of municipalities is not an option).
+     - Several simultaneous selections, mixing municipios of different
+       provinces. Search matches without accents ("a coruna" → A Coruña).
+     ================================================================== */
+
   /**
-   * Populate Province dropdown
+   * Build the picker DOM state objects and bind their events.
    */
-  populateProvinceSelect() {
-    const provSelect = document.getElementById('filter-province');
-    if (!provSelect) return;
+  setupPickers() {
+    this.pickers = {
+      province: this.createPickerState('province'),
+      municipio: this.createPickerState('municipio')
+    };
+  }
 
-    const provinces = this.api.getProvincesList();
-    provSelect.innerHTML = '<option value="">Todas las Provincias</option>' +
-      provinces.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+  createPickerState(type) {
+    const root = document.getElementById(type === 'province' ? 'picker-province' : 'picker-municipio');
+    const ps = {
+      type,
+      root,
+      trigger: root ? root.querySelector('.picker-trigger') : null,
+      panel: root ? root.querySelector('.picker-panel') : null,
+      search: root ? root.querySelector('.picker-search') : null,
+      optionsBox: root ? root.querySelector('.picker-options') : null,
+      clearBtn: root ? root.querySelector('.picker-clear') : null,
+      footerCount: root ? root.querySelector('.picker-footer-count') : null
+    };
 
-    if (this.state.province) {
-      provSelect.value = this.state.province;
-      this.populateMunicipalitySelect(this.state.province);
+    if (!ps.root || !ps.trigger) return ps;
+
+    ps.trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (ps.trigger.disabled) return;
+      this.togglePicker(type);
+    });
+
+    if (ps.search) {
+      ps.search.addEventListener('input', () => this.renderPickerOptions(type));
+      ps.search.addEventListener('click', (e) => e.stopPropagation());
+    }
+
+    if (ps.clearBtn) {
+      ps.clearBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.setPickerValues(type, []);
+        this.applyFilters(true);
+      });
+    }
+
+    return ps;
+  }
+
+  /**
+   * Close every open picker (used on outside clicks / Esc).
+   */
+  closeAllPickers() {
+    if (!this.pickers) return;
+    Object.values(this.pickers).forEach(ps => this.closePicker(ps.type));
+  }
+
+  closePicker(type) {
+    const ps = this.pickers && this.pickers[type];
+    if (!ps || !ps.panel) return;
+    ps.panel.hidden = true;
+    if (ps.trigger) {
+      ps.trigger.setAttribute('aria-expanded', 'false');
+      ps.trigger.classList.remove('picker-open');
+    }
+  }
+
+  togglePicker(type) {
+    const ps = this.pickers && this.pickers[type];
+    if (!ps || !ps.panel) return;
+
+    const willOpen = ps.panel.hidden;
+    this.closeAllPickers();
+    if (!willOpen) return;
+
+    ps.panel.hidden = false;
+    ps.trigger.setAttribute('aria-expanded', 'true');
+    ps.trigger.classList.add('picker-open');
+
+    this.renderPickerOptions(type);
+
+    // Auto-focus the search box: on the mobile this opens the keyboard
+    // right away — exactly what the user wants to "type to find".
+    if (ps.search) {
+      ps.search.focus();
     }
   }
 
   /**
-   * Populate Municipality dropdown based on chosen province
+   * List of options available in the municipality picker: union of the
+   * municipalities of the currently selected provinces, or ALL of Spain
+   * when no province is selected.
    */
-  populateMunicipalitySelect(province) {
-    const munSelect = document.getElementById('filter-municipio');
-    if (!munSelect) return;
+  buildMunicipalityOptions() {
+    const set = new Set();
+    if (!this.state.provinces.length) {
+      this.api.getAllMunicipalitiesList().forEach(m => set.add(m));
+    } else {
+      this.state.provinces.forEach(p => {
+        this.api.getMunicipalitiesList(p).forEach(m => set.add(m));
+      });
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }
 
-    if (!province) {
-      munSelect.innerHTML = '<option value="">Todos los Municipios</option>';
-      munSelect.disabled = true;
-      return;
+  /**
+   * Render the checkbox list according to the typed search text.
+   */
+  renderPickerOptions(type) {
+    const ps = this.pickers && this.pickers[type];
+    if (!ps || !ps.optionsBox) return;
+
+    const searchVal = ps.search ? ps.search.value.trim() : '';
+    const query = this.api.normalizeText(searchVal);
+    const values = type === 'province' ? this.state.provinces : this.state.municipios;
+    const fullList = type === 'province' ? this.api.getProvincesList() : this.buildMunicipalityOptions();
+
+    const filtered = query
+      ? fullList.filter(item => this.api.normalizeText(item).includes(query))
+      : fullList;
+
+    // Cap the rendered items so huge unions (e.g. whole Spain ~8000 munis)
+    // never freeze the DOM; the search box does the real navigation.
+    const MAX_VISIBLE = 400;
+    const shown = filtered.slice(0, MAX_VISIBLE);
+
+    let html = shown.map(op => {
+      const selected = values.includes(op);
+      return `
+        <div class="picker-option ${selected ? 'selected' : ''}" data-value="${escapeHtml(op)}"
+          role="option" aria-selected="${selected}">
+          <span class="picker-check">${selected ? '✓' : ''}</span>
+          <span class="picker-option-label">${escapeHtml(op)}</span>
+        </div>
+      `;
+    }).join('');
+
+    if (!html) {
+      html = `<div class="picker-no-results">Sin resultados para “${escapeHtml(searchVal)}”</div>`;
+    } else if (filtered.length > MAX_VISIBLE) {
+      html += `<div class="picker-more-note">…${(filtered.length - MAX_VISIBLE).toLocaleString()} más. Escribe para buscar.</div>`;
     }
 
-    const munis = this.api.getMunicipalitiesList(province);
-    munSelect.disabled = false;
-    munSelect.innerHTML = '<option value="">Todos los Municipios</option>' +
-      munis.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+    ps.optionsBox.innerHTML = html;
 
-    if (this.state.municipio) {
-      munSelect.value = this.state.municipio;
+    if (ps.footerCount) {
+      const selWord = values.length === 1 ? 'selección' : 'selecciones';
+      ps.footerCount.textContent = `${values.length.toLocaleString()} ${selWord}`;
     }
+
+    ps.optionsBox.querySelectorAll('.picker-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.togglePickerValue(type, opt.dataset.value);
+      });
+    });
+  }
+
+  /**
+   * Add / remove one option from the picker's selection and re-filter.
+   */
+  togglePickerValue(type, value) {
+    if (!value) return;
+    const values = this.setPicker(type).values;
+    const idx = values.indexOf(value);
+    if (idx >= 0) {
+      values.splice(idx, 1);
+    } else {
+      values.push(value);
+    }
+    values.sort((a, b) => a.localeCompare(b));
+
+    this.state.tablePage = 1;
+    this.updatePickerTrigger(type);
+    this.renderPickerOptions(type);
+
+    // The municipality options depend on the chosen provinces
+    if (type === 'province') {
+      this.renderPickerOptions('municipio');
+    }
+
+    this.applyFilters(false);
+  }
+
+  setPicker(type) {
+    const ps = this.pickers[type];
+    return {
+      ps,
+      values: type === 'province' ? this.state.provinces : this.state.municipios
+    };
+  }
+
+  setPickerValues(type, newValues) {
+    this.setPicker(type).values.length = 0;
+    Array.prototype.push.apply(this.setPicker(type).values, newValues);
+    this.state.tablePage = 1;
+    this.updatePickerTrigger(type);
+    this.renderPickerOptions(type);
+    if (type === 'province') {
+      this.renderPickerOptions('municipio');
+    }
+  }
+
+  /**
+   * Refresh the trigger text: "Todas las Provincias" / "BARCELONA" /
+   * "2 provincias" etc.
+   */
+  updatePickerTrigger(type) {
+    const ps = this.pickers && this.pickers[type];
+    if (!ps || !ps.trigger) return;
+
+    const values = type === 'province' ? this.state.provinces : this.state.municipios;
+    const emptyLabel = type === 'province' ? 'Todas las Provincias' : 'Todos los Municipios';
+    const noun = type === 'province' ? 'provincia' : 'municipio';
+
+    let label = emptyLabel;
+    if (values.length === 1) {
+      label = values[0];
+    } else if (values.length > 1) {
+      label = `${values.length} ${noun}s`;
+    }
+
+    const summary = ps.trigger.querySelector('.picker-summary');
+    if (summary) summary.textContent = label;
+
+    ps.trigger.classList.toggle('has-selection', values.length > 0);
+  }
+
+  /**
+   * Rebuild both picker lists after the dataset loads (also restores the
+   * selections coming from URL parameters).
+   */
+  populateLocationPickers() {
+    if (!this.pickers) return;
+    ['province', 'municipio'].forEach(type => {
+      this.updatePickerTrigger(type);
+      this.renderPickerOptions(type);
+    });
   }
 
   /**
@@ -659,8 +981,8 @@ class AppController {
   resetFilters() {
     this.state.searchText = '';
     this.state.brandQuery = '';
-    this.state.province = '';
-    this.state.municipio = '';
+    this.state.provinces = [];
+    this.state.municipios = [];
     this.state.groupBy = 'none';
     this.state.only24h = false;
     this.state.onlyFavorites = false;
@@ -672,14 +994,13 @@ class AppController {
     const searchInput = document.getElementById('input-main-search');
     if (searchInput) searchInput.value = '';
 
-    const provSelect = document.getElementById('filter-province');
-    if (provSelect) provSelect.value = '';
-
-    const munSelect = document.getElementById('filter-municipio');
-    if (munSelect) {
-      munSelect.innerHTML = '<option value="">Todos los Municipios</option>';
-      munSelect.disabled = true;
-    }
+    // Reset multi-select pickers
+    ['province', 'municipio'].forEach(type => {
+      const ps = this.pickers && this.pickers[type];
+      if (!ps) return;
+      this.setPickerValues(type, []);
+      this.closePicker(type);
+    });
 
     const groupSelect = document.getElementById('filter-group-by');
     if (groupSelect) groupSelect.value = 'none';
@@ -825,22 +1146,22 @@ class AppController {
    */
   setFiltersLocked(locked) {
     const searchInput = document.getElementById('input-main-search');
-    const provSelect = document.getElementById('filter-province');
-    const munSelect = document.getElementById('filter-municipio');
+    const provTrigger = document.getElementById('filter-province');
+    const munTrigger = document.getElementById('filter-municipio');
 
-    [searchInput, provSelect, munSelect].forEach(el => {
+    [searchInput, provTrigger, munTrigger].forEach(el => {
       if (!el) return;
-      if (locked) {
-        el.disabled = true;
-      } else {
-        // Municipality select only re-enables when a province is chosen
-        if (el === munSelect && !this.state.province) {
-          munSelect.disabled = true;
-        } else {
-          el.disabled = false;
-        }
-      }
+      el.disabled = locked;
       el.classList.toggle('filter-locked', locked);
+    });
+
+    // Lock the search & clear controls inside the picker panels too
+    ['province', 'municipio'].forEach(type => {
+      const ps = this.pickers && this.pickers[type];
+      if (!ps) return;
+      if (locked) this.closePicker(type);
+      if (ps.search) ps.search.disabled = locked;
+      if (ps.clearBtn) ps.clearBtn.disabled = locked;
     });
   }
 
@@ -854,12 +1175,12 @@ class AppController {
     panel.hidden = !visible;
 
     const slider = document.getElementById('gps-radius-slider');
-    const valueLabel = document.getElementById('gps-radius-value');
+    const valueInput = document.getElementById('gps-radius-value');
     if (slider && !visible) {
       slider.value = this.state.gpsRadius;
     }
-    if (valueLabel) {
-      valueLabel.textContent = `${this.state.gpsRadius} km`;
+    if (valueInput) {
+      valueInput.value = this.state.gpsRadius;
     }
   }
 
@@ -907,13 +1228,57 @@ class AppController {
   }
 
   /**
+   * Visual Style Selector (🎨 in the header).
+   * Reads the css/themes.js manifest (window.AVAILABLE_THEMES); each entry
+   * is a full .css file inside css/. Choice is persisted in localStorage,
+   * exactly like the dark/light mode toggle.
+   */
+  initStyleSelector() {
+    const select = document.getElementById('style-selector');
+    if (!select) return;
+
+    const themes = window.AVAILABLE_THEMES || [
+      { id: 'default', name: 'Clásico', file: 'default.css' }
+    ];
+
+    select.innerHTML = themes
+      .map(t => `<option value="${t.id}">🎨 ${t.name}</option>`)
+      .join('');
+
+    // Restore the saved style (fall back to the first manifest entry)
+    const saved = localStorage.getItem('miteco_style');
+    const chosen = themes.some(t => t.id === saved) ? saved : themes[0].id;
+    select.value = chosen;
+    this.applyStyleTheme(chosen, themes);
+
+    select.onchange = () => this.applyStyleTheme(select.value, themes);
+  }
+
+  /**
+   * Swap the app stylesheet and remember the choice.
+   */
+  applyStyleTheme(styleId, themes) {
+    const list = themes || window.AVAILABLE_THEMES || [];
+    const theme = list.find(t => t.id === styleId) || { file: 'default.css' };
+
+    const link = document.getElementById('app-style-link');
+    if (link) link.href = 'css/' + theme.file;
+
+    try {
+      localStorage.setItem('miteco_style', styleId);
+    } catch (e) {
+      console.warn('Could not save visual style preference', e);
+    }
+  }
+
+  /**
    * Build URL Search Params object
    */
   buildUrlSearchParams() {
     const params = new URLSearchParams();
     if (this.state.fuelType !== 'gasolina95') params.set('combustible', this.state.fuelType);
-    if (this.state.province) params.set('provincia', this.state.province);
-    if (this.state.municipio) params.set('municipio', this.state.municipio);
+    if (this.state.provinces.length) params.set('provincia', this.state.provinces.join('|'));
+    if (this.state.municipios.length) params.set('municipio', this.state.municipios.join('|'));
     if (this.state.searchText) params.set('buscar', this.state.searchText);
     if (this.state.brandQuery) params.set('rotulo', this.state.brandQuery);
     if (this.state.groupBy !== 'none') params.set('agrupar', this.state.groupBy);
@@ -945,8 +1310,17 @@ class AppController {
       });
     }
 
-    if (params.get('provincia')) this.state.province = params.get('provincia');
-    if (params.get('municipio') || params.get('city')) this.state.municipio = params.get('municipio') || params.get('city');
+    // Provincia / municipio: values separated with "|", e.g.
+    //   ?provincia=BARCELONA&municipio=MANLLEU|GIRONA ;
+    // A single value also works (backwards compatible with old URLs).
+    const provParam = params.get('provincia');
+    if (provParam) {
+      this.state.provinces = provParam.split('|').map(v => v.trim()).filter(Boolean);
+    }
+    const munParam = params.get('municipio') || params.get('city');
+    if (munParam) {
+      this.state.municipios = munParam.split('|').map(v => v.trim()).filter(Boolean);
+    }
     if (params.get('buscar') || params.get('q')) this.state.searchText = params.get('buscar') || params.get('q');
     if (params.get('rotulo') || params.get('brand') || params.get('marca')) this.state.brandQuery = params.get('rotulo') || params.get('brand') || params.get('marca');
     if (params.get('agrupar') || params.get('group')) this.state.groupBy = params.get('agrupar') || params.get('group');
@@ -996,27 +1370,21 @@ class AppController {
       });
     }
 
-    // Province dropdown
-    const provSelect = document.getElementById('filter-province');
-    if (provSelect) {
-      provSelect.addEventListener('change', (e) => {
-        this.state.province = e.target.value;
-        this.state.municipio = '';
-        this.state.tablePage = 1;
-        this.populateMunicipalitySelect(this.state.province);
-        this.applyFilters(true);
+    // Multi-select pickers: close on outside click or Escape
+    document.addEventListener('click', (e) => {
+      if (!this.pickers) return;
+      Object.entries(this.pickers).forEach(([type, ps]) => {
+        if (ps.root && !ps.root.contains(e.target)) {
+          this.closePicker(type);
+        }
       });
-    }
+    });
 
-    // Municipality dropdown
-    const munSelect = document.getElementById('filter-municipio');
-    if (munSelect) {
-      munSelect.addEventListener('change', (e) => {
-        this.state.municipio = e.target.value;
-        this.state.tablePage = 1;
-        this.applyFilters(true);
-      });
-    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.pickers) {
+        this.closeAllPickers();
+      }
+    });
 
     // Group By dropdown
     const groupSelect = document.getElementById('filter-group-by');
@@ -1037,6 +1405,51 @@ class AppController {
         this.state.sortBy = e.target.value;
         this.applyFilters(false);
       });
+    }
+
+    // List (cards) pagination: change page / page size / lazy mode
+    const listPrev = document.getElementById('btn-list-prev');
+    if (listPrev) {
+      listPrev.onclick = () => {
+        if (this.state.listPage > 1) {
+          this.state.listPage--;
+          this.renderListPage();
+          listContainerTop();
+        }
+      };
+    }
+
+    const listNext = document.getElementById('btn-list-next');
+    if (listNext) {
+      listNext.onclick = () => {
+        this.state.listPage++;
+        this.renderListPage();
+        listContainerTop();
+      };
+    }
+
+    const listSizeSelect = document.getElementById('list-page-size');
+    if (listSizeSelect) {
+      listSizeSelect.value = this.state.listLazyAll ? 'lazy' : String(this.state.listPageSize);
+      listSizeSelect.addEventListener('change', () => {
+        const val = listSizeSelect.value;
+        if (val === 'lazy') {
+          this.state.listLazyAll = true;
+          this.state.listShownCount = this.state.listPageSize;
+        } else {
+          this.state.listLazyAll = false;
+          this.state.listPageSize = parseInt(val, 10) || 30;
+          this.state.listPage = 1;
+        }
+        this.renderListPage();
+        listContainerTop();
+      });
+    }
+
+    // Scroll the cards list into view after a manual page change
+    function listContainerTop() {
+      const list = document.getElementById('stations-cards-list');
+      if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     // Table header sort clicks
@@ -1103,26 +1516,47 @@ class AppController {
       locBtn.onclick = () => this.requestUserLocation();
     }
 
-    // GPS Radius Slider (while tracking mode is active)
+    // GPS Radius Slider + editable km box (while tracking mode is active)
     const radiusSlider = document.getElementById('gps-radius-slider');
+    const radiusValueInput = document.getElementById('gps-radius-value');
+
+    const applyRadius = (val) => {
+      // Clamp to validated bounds 1..50
+      if (isNaN(val) || val < 1) val = 1;
+      if (val > 50) val = 50;
+
+      this.state.gpsRadius = val;
+
+      if (radiusSlider) radiusSlider.value = val;
+      if (radiusValueInput) radiusValueInput.value = val;
+
+      // Live re-filter with the new radius if tracking is running
+      if (this.state.trackingActive) {
+        this.state.maxDistance = val;
+        if (this.state.userLocation) {
+          this.map.setUserLocation(this.state.userLocation.lat, this.state.userLocation.lng, val);
+        }
+        this.applyFilters(false);
+      }
+    };
+
     if (radiusSlider) {
       radiusSlider.value = this.state.gpsRadius;
       radiusSlider.addEventListener('input', (e) => {
-        const val = parseInt(e.target.value, 10);
-        if (isNaN(val)) return;
+        applyRadius(parseInt(e.target.value, 10));
+      });
+    }
 
-        this.state.gpsRadius = val;
-        const valueLabel = document.getElementById('gps-radius-value');
-        if (valueLabel) valueLabel.textContent = `${val} km`;
+    if (radiusValueInput) {
+      radiusValueInput.value = this.state.gpsRadius;
 
-        // Live re-filter with the new radius if tracking is running
-        if (this.state.trackingActive) {
-          this.state.maxDistance = val;
-          if (this.state.userLocation) {
-            this.map.setUserLocation(this.state.userLocation.lat, this.state.userLocation.lng, val);
-          }
-          this.applyFilters(false);
-        }
+      // Manual numeric entry: press Enter or leave the field to apply
+      radiusValueInput.addEventListener('change', () => {
+        applyRadius(parseInt(radiusValueInput.value, 10));
+      });
+      // Strip invalid characters on the fly
+      radiusValueInput.addEventListener('input', () => {
+        radiusValueInput.value = radiusValueInput.value.replace(/[^0-9]/g, '');
       });
     }
 
