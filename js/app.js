@@ -75,8 +75,9 @@ class AppController {
       theme: localStorage.getItem('miteco_theme') || 'dark',
       tablePage: 1,
       tablePageSize: 50,
-      formatJson: false,      // json-visual mode: styled HTML developer screen
-      formatPureJson: false    // json mode: raw JSON output only, no HTML at all
+      trackingActive: false,  // GPS live-tracking mode
+      watchId: null,          // geolocation.watchPosition handle
+      gpsRadius: 10           // user configurable radius in km (default 10)
     };
 
     this.currentDataset = null;
@@ -90,7 +91,6 @@ class AppController {
   async init() {
     this.readUrlParams();
     this.applyTheme(this.state.theme);
-    this.renderBrandChips();
     this.bindEvents();
 
     // Init Map
@@ -98,11 +98,6 @@ class AppController {
 
     // Start loading data
     await this.loadData(false);
-
-    // If format=json requested via URL, activate developer raw JSON view
-    if (this.state.formatJson) {
-      this.activateRawJsonMode();
-    }
   }
 
   /**
@@ -114,7 +109,7 @@ class AppController {
     const loadingBar = document.getElementById('loading-progress-fill');
     const lastUpdateBadge = document.getElementById('last-update-time');
 
-    if (loadingOverlay && !this.state.formatJson && !this.state.formatPureJson) {
+    if (loadingOverlay) {
       loadingOverlay.classList.remove('hidden');
     }
 
@@ -161,12 +156,16 @@ class AppController {
    * Apply filters and update UI across all views
    */
   applyFilters(autoFitMap = false) {
+    // While GPS live-tracking is active, manual location filters are
+    // visually grayed out AND ignored: position + radius rule everything.
+    const tracking = this.state.trackingActive;
+
     const criteria = {
       fuelType: this.state.fuelType,
-      searchText: this.state.searchText,
-      brandQuery: this.state.brandQuery,
-      province: this.state.province,
-      municipio: this.state.municipio,
+      searchText: tracking ? '' : this.state.searchText,
+      brandQuery: tracking ? '' : this.state.brandQuery,
+      province: tracking ? '' : this.state.province,
+      municipio: tracking ? '' : this.state.municipio,
       groupBy: this.state.groupBy,
       only24h: this.state.only24h,
       onlyFavorites: this.state.onlyFavorites,
@@ -180,12 +179,6 @@ class AppController {
 
     const dataset = this.api.filterStations(criteria);
     this.currentDataset = dataset;
-
-    // Pure JSON API mode: output raw JSON and skip all HTML rendering
-    if (this.state.formatPureJson) {
-      this.outputPureJson();
-      return;
-    }
 
     // Update stations list UI (top 100 for card view performance)
     this.renderStationsList(dataset.allStationsForMap.slice(0, 100), dataset.fuelTypeInfo, dataset.stats);
@@ -228,11 +221,8 @@ class AppController {
     // Update URL query parameters
     this.updateUrlParams();
 
-    // Update live JSON API preview if modal open or in JSON mode
+    // Update share modal URL if open
     this.updateApiModalContent();
-    if (this.state.formatJson) {
-      this.updateRawJsonScreen();
-    }
   }
 
   /**
@@ -522,35 +512,6 @@ class AppController {
   }
 
   /**
-   * Render Brand quick-filter chips
-   */
-  renderBrandChips() {
-    const container = document.getElementById('brand-chips-container');
-    if (!container) return;
-
-    let html = '';
-    window.POPULAR_BRANDS.forEach((brand) => {
-      const active = this.state.brandQuery === brand.query ? 'active' : '';
-      html += `
-        <button class="brand-chip ${active}" data-query="${escapeHtml(brand.query)}">
-          ${escapeHtml(brand.name)}
-        </button>
-      `;
-    });
-
-    container.innerHTML = html;
-
-    container.querySelectorAll('.brand-chip').forEach(chip => {
-      chip.onclick = () => {
-        container.querySelectorAll('.brand-chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        this.state.brandQuery = chip.dataset.query;
-        this.applyFilters(true);
-      };
-    });
-  }
-
-  /**
    * Populate Province dropdown
    */
   populateProvinceSelect() {
@@ -679,139 +640,17 @@ class AppController {
   }
 
   /**
-   * Update content inside Share & JSON API modal
+   * Update share modal content with the current filtered URL
    */
   updateApiModalContent() {
     const webInput = document.getElementById('input-shareable-web-url');
-    const apiInput = document.getElementById('input-shareable-api-url');
-    const openApiBtn = document.getElementById('btn-open-api-url');
-    const previewPre = document.getElementById('api-json-live-preview');
-    const snippetCode = document.getElementById('snippet-js-fetch');
+    if (!webInput) return;
 
     const params = this.buildUrlSearchParams();
     const base = window.location.origin + window.location.pathname;
     const fullWebUrl = base + (params.toString() ? '?' + params.toString() : '');
 
-    // json-visual URL: HTML developer screen with styled JSON preview
-    const visualParams = new URLSearchParams(params.toString());
-    visualParams.set('format', 'json-visual');
-    const fullVisualUrl = base + '?' + visualParams.toString();
-
-    // json URL: pure JSON output — no HTML at all, usable by scripts
-    const apiParams = new URLSearchParams(params.toString());
-    apiParams.set('format', 'json');
-    const fullApiUrl = base + '?' + apiParams.toString();
-
-    if (webInput) webInput.value = fullWebUrl;
-    // Populate visual URL field if it exists
-    const visualInput = document.getElementById('input-shareable-visual-url');
-    if (visualInput) visualInput.value = fullVisualUrl;
-    // API field now shows the pure JSON URL
-    if (apiInput) apiInput.value = fullApiUrl;
-    if (openApiBtn) openApiBtn.href = fullApiUrl;
-
-    if (this.currentDataset) {
-      const payload = this.api.generateApiPayload(
-        {
-          fuelType: this.state.fuelType,
-          searchText: this.state.searchText,
-          brandQuery: this.state.brandQuery,
-          province: this.state.province,
-          municipio: this.state.municipio,
-          only24h: this.state.only24h,
-          sortBy: this.state.sortBy
-        },
-        this.currentDataset,
-        this.state.groupBy
-      );
-
-      const jsonStr = JSON.stringify(payload, null, 2);
-      if (previewPre) previewPre.textContent = jsonStr.slice(0, 3000) + (jsonStr.length > 3000 ? '\n... (truncado en previsualización)' : '');
-
-      if (snippetCode) {
-        snippetCode.textContent = `// Ejemplo de petición fetch a la API procesada:\nfetch('${fullApiUrl}')\n  .then(res => res.json())\n  .then(data => {\n    console.log('Resultados:', data.total_resultados);\n    console.log('Estadísticas:', data.estadisticas);\n    console.log('Datos:', data.datos);\n  });`;
-      }
-    }
-  }
-
-  /**
-   * Activate the visual developer JSON screen (?format=json-visual).
-   * Shows an interactive HTML page with copy buttons and a live-updating
-   * JSON preview. NOT a raw API endpoint — use ?format=json for that.
-   */
-  activateRawJsonMode() {
-    const rawScreen = document.getElementById('raw-json-screen');
-    if (!rawScreen) return;
-    rawScreen.classList.remove('hidden');
-    this.updateRawJsonScreen();
-  }
-
-  /**
-   * Pure JSON API output mode (?format=json).
-   * Replaces the entire document with raw JSON text — no HTML, no CSS.
-   * Usable by Python (requests.get(url).json()), curl, or any HTTP client.
-   */
-  outputPureJson() {
-    if (!this.currentDataset) return;
-
-    const payload = this.api.generateApiPayload(
-      {
-        fuelType: this.state.fuelType,
-        searchText: this.state.searchText,
-        brandQuery: this.state.brandQuery,
-        province: this.state.province,
-        municipio: this.state.municipio,
-        only24h: this.state.only24h,
-        sortBy: this.state.sortBy
-      },
-      this.currentDataset,
-      this.state.groupBy
-    );
-
-    const jsonStr = JSON.stringify(payload, null, 2);
-
-    // Replace the entire document with raw JSON text.
-    // document.open() clears the document; after document.write()
-    // the page contains only the JSON string with no HTML wrapper,
-    // so json.loads(response.text) works in Python regardless of
-    // the Content-Type header sent by the static host.
-    try {
-      document.open();
-      document.write(jsonStr);
-      document.close();
-    } catch (e) {
-      // Fallback: strip all page chrome and show only JSON
-      document.head.innerHTML = '';
-      document.body.style.cssText = 'margin:0;padding:0;white-space:pre;font-family:monospace;';
-      document.body.textContent = jsonStr;
-    }
-  }
-
-  /**
-   * Update Raw JSON screen contents
-   */
-  updateRawJsonScreen() {
-    const contentArea = document.getElementById('raw-json-content-area');
-    const metaCount = document.getElementById('raw-json-meta-count');
-    if (!contentArea || !this.currentDataset) return;
-
-    const payload = this.api.generateApiPayload(
-      {
-        fuelType: this.state.fuelType,
-        searchText: this.state.searchText,
-        brandQuery: this.state.brandQuery,
-        province: this.state.province,
-        municipio: this.state.municipio,
-        only24h: this.state.only24h,
-        sortBy: this.state.sortBy
-      },
-      this.currentDataset,
-      this.state.groupBy
-    );
-
-    const jsonStr = JSON.stringify(payload, null, 2);
-    contentArea.textContent = jsonStr;
-    if (metaCount) metaCount.textContent = `${this.currentDataset.totalMatches.toLocaleString()} registros devueltos`;
+    webInput.value = fullWebUrl;
   }
 
   /**
@@ -851,126 +690,177 @@ class AppController {
     const sortSelect = document.getElementById('select-sort-order');
     if (sortSelect) sortSelect.value = 'price_asc';
 
-    this.renderBrandChips();
+    // Stop GPS tracking if it was running (also renables locked inputs)
+    if (this.state.trackingActive) {
+      this.stopTracking();
+    }
+
+    this.state.gpsRadius = parseInt(document.getElementById('gps-radius-slider')?.value || this.state.gpsRadius, 10);
     this.applyFilters(true);
   }
 
   /**
-   * Export current filtered dataset to CSV
-   */
-  exportToCSV() {
-    if (!this.currentDataset || !this.currentDataset.allStationsForMap) return;
-
-    const items = this.currentDataset.allStationsForMap;
-    const fuelKey = this.state.fuelType;
-    const fuelName = window.FUEL_TYPES[fuelKey].name;
-
-    let csv = 'ID;Rótulo;Municipio;Provincia;Dirección;Horario;' + fuelName + ' (€);Distancia (km);Latitud;Longitud\n';
-    items.forEach(s => {
-      const p = s.prices[fuelKey] ? s.prices[fuelKey].toFixed(3).replace('.', ',') : '';
-      csv += `"${s.id}";"${s.rotulo}";"${s.municipio}";"${s.provincia}";"${s.direccion}";"${s.horario}";"${p}";"${s.distance || ''}";"${s.lat}";"${s.lng}"\n`;
-    });
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `carburantes_${fuelKey}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  /**
-   * Export current filtered dataset to JSON
-   */
-  exportToJSON() {
-    if (!this.currentDataset) return;
-
-    const payload = this.api.generateApiPayload(
-      {
-        fuelType: this.state.fuelType,
-        searchText: this.state.searchText,
-        brandQuery: this.state.brandQuery,
-        province: this.state.province,
-        municipio: this.state.municipio,
-        only24h: this.state.only24h,
-        sortBy: this.state.sortBy
-      },
-      this.currentDataset,
-      this.state.groupBy
-    );
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `carburantes_${this.state.fuelType}_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  /**
-   * Geolocation helper
+   * GPS live-tracking mode (toggle)
+   * While active: filters by province/municipio/search are locked & ignored,
+   * results are filtered by the configured radius around the current position
+   * in real time (watchPosition) — designed to be used while driving.
    */
   requestUserLocation() {
+    if (this.state.trackingActive) {
+      this.stopTracking();
+    } else {
+      this.startTracking();
+    }
+  }
+
+  startTracking() {
     const locBtn = document.getElementById('btn-get-location');
-    if (locBtn) locBtn.innerHTML = '⌛ Localizando...';
 
     if (!navigator.geolocation) {
       alert('Tu navegador no soporta geolocalización.');
-      if (locBtn) locBtn.innerHTML = '📍 Mi ubicación';
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        this.state.userLocation = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude
-        };
+    this.state.trackingActive = true;
+    this.state.maxDistance = this.state.gpsRadius;
 
-        const radius = this.state.maxDistance || 25;
+    // Lock & gray out manual filters while tracking
+    this.setFiltersLocked(true);
+    this.updateRadiusPanelVisibility(true);
 
-        // Safely set user location on map (map may not be visible in table/list view)
-        this.map.setUserLocation(pos.coords.latitude, pos.coords.longitude, radius);
+    if (locBtn) {
+      locBtn.classList.add('active');
+      locBtn.innerHTML = '🛑 Dejar de seguir GPS';
+    }
 
-        // Only pan map if it is actually initialized and visible
-        if (this.map.map && this.state.currentView !== 'tabla' && this.state.currentView !== 'list') {
-          try {
-            this.map.map.setView([pos.coords.latitude, pos.coords.longitude], 12);
-          } catch (e) {
-            console.warn('Map setView failed (map may not be rendered yet):', e);
-          }
-        }
-
-        if (locBtn) {
-          locBtn.classList.add('active');
-          locBtn.innerHTML = '📍 Ubicación activa';
-        }
-
-        // Enable distance sort option
-        const sortSelect = document.getElementById('select-sort-order');
-        if (sortSelect) {
-          const distOpt = sortSelect.querySelector('option[value="distance_asc"]');
-          if (distOpt) distOpt.disabled = false;
-        }
-
-        this.applyFilters(true);
-      },
+    this.state.watchId = navigator.geolocation.watchPosition(
+      (pos) => this.onTrackingPosition(pos),
       (err) => {
         // Provide specific error messages for each GeolocationPositionError code
         const messages = {
           1: 'Permiso de ubicación denegado. Haz clic en el icono del candado en la barra de direcciones y permite el acceso a la ubicación.',
           2: 'No se pudo determinar tu posición. Comprueba que el GPS o la conexión a internet funcionan correctamente.',
-          3: 'La solicitud de ubicación tardó demasiado. Inténtalo de nuevo.'
+          3: 'La solicitud de ubicación está tardando demasiado. Sigue intentando o ajusta el radio.'
         };
         const msg = messages[err.code] || `Error de geolocalización (código ${err.code}).`;
         alert('📍 ' + msg);
         console.warn('Geolocation error:', err.code, err.message);
-        if (locBtn) locBtn.innerHTML = '📍 Mi ubicación';
+        this.stopTracking();
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 21000, maximumAge: 3000 }
     );
+
+    // Enable distance sort option while tracking
+    const sortSelect = document.getElementById('select-sort-order');
+    if (sortSelect) {
+      const distOpt = sortSelect.querySelector('option[value="distance_asc"]');
+      if (distOpt) distOpt.disabled = false;
+    }
+  }
+
+  stopTracking() {
+    if (this.state.watchId !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(this.state.watchId);
+      this.state.watchId = null;
+    }
+
+    this.state.trackingActive = false;
+    this.state.userLocation = null;
+    this.state.maxDistance = null;
+
+    this.setFiltersLocked(false);
+    this.updateRadiusPanelVisibility(false);
+
+    const locBtn = document.getElementById('btn-get-location');
+    if (locBtn) {
+      locBtn.classList.remove('active');
+      locBtn.innerHTML = '📍 Mi ubicación';
+    }
+
+    this.map.removeUserLocation();
+
+    // Disable distance sort option again
+    const sortSelect = document.getElementById('select-sort-order');
+    if (sortSelect) {
+      const distOpt = sortSelect.querySelector('option[value="distance_asc"]');
+      if (distOpt && this.state.sortBy === 'distance_asc') {
+        this.state.sortBy = 'price_asc';
+        sortSelect.value = 'price_asc';
+      }
+      if (distOpt) distOpt.disabled = true;
+    }
+
+    this.applyFilters(false);
+  }
+
+  /**
+   * Real-time position callback: fires continuously while the user moves.
+   */
+  onTrackingPosition(pos) {
+    if (!this.state.trackingActive) return;
+
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    this.state.userLocation = { lat: lat, lng: lng };
+
+    // Draw user pulse + radius circle on map
+    this.map.setUserLocation(lat, lng, this.state.maxDistance);
+
+    // Follow the user if the map is currently visible
+    if (this.map.map && (this.state.currentView === 'split' || this.state.currentView === 'map')) {
+      try {
+        const currentZoom = this.map.map.getZoom();
+        const targetZoom = currentZoom < 11 ? 12 : currentZoom;
+        this.map.map.setView([lat, lng], targetZoom);
+      } catch (e) {
+        console.warn('Map setView failed (map may not be rendered yet):', e);
+      }
+    }
+
+    this.applyFilters(false);
+  }
+
+  /**
+   * Enable / disable (and gray out) the manual location filters while GPS tracking.
+   */
+  setFiltersLocked(locked) {
+    const searchInput = document.getElementById('input-main-search');
+    const provSelect = document.getElementById('filter-province');
+    const munSelect = document.getElementById('filter-municipio');
+
+    [searchInput, provSelect, munSelect].forEach(el => {
+      if (!el) return;
+      if (locked) {
+        el.disabled = true;
+      } else {
+        // Municipality select only re-enables when a province is chosen
+        if (el === munSelect && !this.state.province) {
+          munSelect.disabled = true;
+        } else {
+          el.disabled = false;
+        }
+      }
+      el.classList.toggle('filter-locked', locked);
+    });
+  }
+
+  /**
+   * Show / hide the GPS radius slider panel.
+   */
+  updateRadiusPanelVisibility(visible) {
+    const panel = document.getElementById('gps-radius-panel');
+    if (!panel) return;
+
+    panel.hidden = !visible;
+
+    const slider = document.getElementById('gps-radius-slider');
+    const valueLabel = document.getElementById('gps-radius-value');
+    if (slider && !visible) {
+      slider.value = this.state.gpsRadius;
+    }
+    if (valueLabel) {
+      valueLabel.textContent = `${this.state.gpsRadius} km`;
+    }
   }
 
 
@@ -1046,16 +936,6 @@ class AppController {
    */
   readUrlParams() {
     const params = new URLSearchParams(window.location.search);
-
-    const fmt = params.get('format');
-    if (fmt === 'json') {
-      // Pure JSON API mode: outputs raw JSON only, no HTML at all.
-      // Consume with: requests.get(url).json() / json.loads(response.text)
-      this.state.formatPureJson = true;
-    } else if (fmt === 'json-visual' || fmt === 'json_visual' || params.get('output') === 'json' || params.get('json') === 'true') {
-      // Visual developer mode: styled HTML screen with a JSON preview.
-      this.state.formatJson = true;
-    }
 
     const fuelParam = params.get('combustible') || params.get('fuel');
     if (fuelParam && window.FUEL_TYPES[fuelParam]) {
@@ -1217,10 +1097,51 @@ class AppController {
       refreshBtn.onclick = () => this.loadData(true);
     }
 
-    // Geolocation Button
+    // Geolocation Button (toggles real-time GPS tracking mode)
     const locBtn = document.getElementById('btn-get-location');
     if (locBtn) {
       locBtn.onclick = () => this.requestUserLocation();
+    }
+
+    // GPS Radius Slider (while tracking mode is active)
+    const radiusSlider = document.getElementById('gps-radius-slider');
+    if (radiusSlider) {
+      radiusSlider.value = this.state.gpsRadius;
+      radiusSlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (isNaN(val)) return;
+
+        this.state.gpsRadius = val;
+        const valueLabel = document.getElementById('gps-radius-value');
+        if (valueLabel) valueLabel.textContent = `${val} km`;
+
+        // Live re-filter with the new radius if tracking is running
+        if (this.state.trackingActive) {
+          this.state.maxDistance = val;
+          if (this.state.userLocation) {
+            this.map.setUserLocation(this.state.userLocation.lat, this.state.userLocation.lng, val);
+          }
+          this.applyFilters(false);
+        }
+      });
+    }
+
+    // Mobile: collapse / expand the map pane
+    const mapToggleBtn = document.getElementById('btn-toggle-map');
+    if (mapToggleBtn) {
+      mapToggleBtn.onclick = () => {
+        const pane = mapToggleBtn.closest('.map-pane-container');
+        if (!pane) return;
+
+        const nowCollapsed = pane.classList.toggle('map-collapsed');
+        const labelSpan = mapToggleBtn.querySelector('span');
+        if (labelSpan) {
+          labelSpan.textContent = nowCollapsed ? 'Mostrar mapa' : 'Ocultar mapa';
+        }
+
+        // Give the CSS transition a moment, then recalculate the map canvas
+        setTimeout(() => this.map.invalidateSize(), 250);
+      };
     }
 
     // Favorites Filter Button
@@ -1232,19 +1153,6 @@ class AppController {
         this.applyFilters(false);
       };
     }
-
-    // Export Buttons
-    const exportCsvBtn = document.getElementById('btn-export-csv');
-    if (exportCsvBtn) exportCsvBtn.onclick = () => this.exportToCSV();
-
-    const tableExportCsvBtn = document.getElementById('table-btn-export-csv');
-    if (tableExportCsvBtn) tableExportCsvBtn.onclick = () => this.exportToCSV();
-
-    const exportJsonBtn = document.getElementById('btn-export-json');
-    if (exportJsonBtn) exportJsonBtn.onclick = () => this.exportToJSON();
-
-    const tableExportJsonBtn = document.getElementById('table-btn-export-json');
-    if (tableExportJsonBtn) tableExportJsonBtn.onclick = () => this.exportToJSON();
 
     // API / Share Modal Open & Close
     const openApiModalBtn = document.getElementById('btn-open-api-modal');
@@ -1259,7 +1167,7 @@ class AppController {
       };
     }
 
-    // Copy Buttons inside API Modal
+    // Copy Button inside Share Modal
     const copyWebBtn = document.getElementById('btn-copy-web-url');
     if (copyWebBtn) {
       copyWebBtn.onclick = () => {
@@ -1269,46 +1177,6 @@ class AppController {
           copyWebBtn.textContent = '✓ ¡Copiado!';
           setTimeout(() => copyWebBtn.textContent = '📋 Copiar Enlace', 2000);
         }
-      };
-    }
-
-    const copyApiBtn = document.getElementById('btn-copy-api-url');
-    if (copyApiBtn) {
-      copyApiBtn.onclick = () => {
-        const input = document.getElementById('input-shareable-api-url');
-        if (input) {
-          navigator.clipboard.writeText(input.value);
-          copyApiBtn.textContent = '✓ ¡Copiado!';
-          setTimeout(() => copyApiBtn.textContent = '📋 Copiar API URL', 2000);
-        }
-      };
-    }
-
-    // Raw JSON Mode Screen Buttons
-    const rawCopyBtn = document.getElementById('btn-raw-json-copy');
-    if (rawCopyBtn) {
-      rawCopyBtn.onclick = () => {
-        const content = document.getElementById('raw-json-content-area');
-        if (content) {
-          navigator.clipboard.writeText(content.textContent);
-          rawCopyBtn.textContent = '✓ ¡Copiado!';
-          setTimeout(() => rawCopyBtn.textContent = '📋 Copiar JSON', 2000);
-        }
-      };
-    }
-
-    const rawDownloadBtn = document.getElementById('btn-raw-json-download');
-    if (rawDownloadBtn) {
-      rawDownloadBtn.onclick = () => this.exportToJSON();
-    }
-
-    const rawSwitchUiBtn = document.getElementById('btn-raw-json-switch-ui');
-    if (rawSwitchUiBtn) {
-      rawSwitchUiBtn.onclick = () => {
-        const rawScreen = document.getElementById('raw-json-screen');
-        if (rawScreen) rawScreen.classList.add('hidden');
-        this.state.formatJson = false;
-        this.updateUrlParams();
       };
     }
 

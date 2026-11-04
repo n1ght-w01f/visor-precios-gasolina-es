@@ -24,21 +24,21 @@ class MitecoMap {
     const mapEl = document.getElementById(this.containerId);
     if (!mapEl) return;
 
-    // Create Leaflet map with CartoDB Positron / Voyager clean tiles
+    // Create Leaflet map — OpenStreetMap standard tiles (free & open, no API key)
     this.map = L.map(this.containerId, {
       center: defaultCenter,
       zoom: defaultZoom,
-      zoomControl: false,
-      attributionControl: false
+      zoomControl: false
     });
 
     // Custom modern zoom control in top-right
     L.control.zoom({ position: 'topright' }).addTo(this.map);
 
-    // Modern light base tile layer with dark mode filter compatibility
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    // OpenStreetMap raster tiles (required legal attribution)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      subdomains: 'abcd'
+      subdomains: 'abc',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
     }).addTo(this.map);
 
     // Initialize MarkerClusterGroup with custom styling
@@ -288,6 +288,21 @@ class MitecoMap {
         weight: 1.5,
         dashArray: '4, 6'
       }).addTo(this.map);
+    }
+  }
+
+  /**
+   * Remove user location marker and circle from the map
+   */
+  removeUserLocation() {
+    if (!this.map) return;
+    if (this.userMarker) {
+      this.map.removeLayer(this.userMarker);
+      this.userMarker = null;
+    }
+    if (this.userCircle) {
+      this.map.removeLayer(this.userCircle);
+      this.userCircle = null;
     }
   }
 

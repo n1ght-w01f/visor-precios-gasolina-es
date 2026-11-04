@@ -101,22 +101,9 @@ const FUEL_TYPES = {
   }
 };
 
-// Popular brands for quick-filter chips
-const POPULAR_BRANDS = [
-  { name: 'Todas', query: '' },
-  { name: 'GM OIL / Gross Mercat', query: 'GM OIL|GROSS MERCAT|GURMET' },
-  { name: 'Esclatoil / Bonpreu', query: 'ESCLATOIL|BONPREU' },
-  { name: 'Plenoil', query: 'PLENOIL' },
-  { name: 'Ballenoil', query: 'BALLENOIL' },
-  { name: 'Petroprix', query: 'PETROPRIX' },
-  { name: 'Repsol', query: 'REPSOL|CAMPSA|PETRONOR' },
-  { name: 'Cepsa / Moeve', query: 'CEPSA|MOEVE' },
-  { name: 'BP', query: 'BP' },
-  { name: 'Galp', query: 'GALP' },
-  { name: 'Shell', query: 'SHELL' },
-  { name: 'Alcampo', query: 'ALCAMPO' },
-  { name: 'Carrefour', query: 'CARREFOUR' }
-];
+// Popular brands removed by request: users filter by fuel type,
+// province and municipality only. Text search still supports brand names
+// manually (e.g. typing "esclatoil" honors whatever the official data says).
 
 class MitecoAPI {
   constructor() {
@@ -611,64 +598,6 @@ class MitecoAPI {
   }
 
   /**
-   * Generate clean JSON API output for external apps
-   */
-  generateApiPayload(criteria, dataset, groupBy = 'none') {
-    const cleanStations = dataset.allStationsForMap.map(s => ({
-      id: s.id,
-      rotulo: s.rotulo,
-      municipio: s.municipio,
-      provincia: s.provincia,
-      direccion: s.direccion,
-      codigo_postal: s.cp,
-      horario: s.horario,
-      es_24h: s.is24h,
-      precio: s.currentPrice,
-      distancia_km: s.distance,
-      latitud: s.lat,
-      longitud: s.lng,
-      todos_los_precios: s.prices
-    }));
-
-    const payload = {
-      api_version: '1.0',
-      fuente_oficial: 'Ministerio para la Transición Ecológica y el Reto Demográfico (MITECO)',
-      fecha_consulta: new Date().toISOString(),
-      combustible_consultado: dataset.fuelTypeInfo,
-      filtros_aplicados: {
-        combustible: criteria.fuelType,
-        municipio: criteria.municipio || null,
-        rotulo: criteria.brandQuery || criteria.searchText || null,
-        provincia: criteria.province || null,
-        solo_24h: criteria.only24h,
-        orden: criteria.sortBy,
-        agrupado_por: groupBy !== 'none' ? groupBy : null
-      },
-      estadisticas: dataset.stats,
-      total_resultados: dataset.totalMatches,
-      datos: groupBy !== 'none' && dataset.groupedData ? dataset.groupedData.map(g => ({
-        grupo: g.groupKey,
-        total: g.count,
-        precio_minimo: g.minPrice,
-        precio_medio: g.avgPrice,
-        precio_maximo: g.maxPrice,
-        estaciones: g.stations.map(s => ({
-          id: s.id,
-          rotulo: s.rotulo,
-          municipio: s.municipio,
-          provincia: s.provincia,
-          direccion: s.direccion,
-          precio: s.currentPrice,
-          horario: s.horario,
-          distancia_km: s.distance
-        }))
-      })) : cleanStations
-    };
-
-    return payload;
-  }
-
-  /**
    * Compute min, avg, max, quartiles and savings
    */
   computePriceStats(prices) {
@@ -723,4 +652,3 @@ class MitecoAPI {
 // Export singleton instance
 window.mitecoAPI = new MitecoAPI();
 window.FUEL_TYPES = FUEL_TYPES;
-window.POPULAR_BRANDS = POPULAR_BRANDS;
