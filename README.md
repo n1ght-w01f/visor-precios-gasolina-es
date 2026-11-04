@@ -1,6 +1,13 @@
-# ⛽ Consulta de Precios de Carburantes — MITECO
+# 🚗 Consulta de Precios de Carburantes — MITECO
 
 Aplicación web estática (HTML + CSS + JS puro, sin frameworks ni backend) que descarga y muestra en tiempo real los precios oficiales de todas las gasolineras de España, según los datos publicados por el **Ministerio para la Transición Ecológica y el Reto Demográfico (MITECO)**.
+
+## 🎨 Sistema de estilos intercambiables
+
+El proyecto incluye varios estilos visuales completos. El selector 🎨 del header permite cambiar entre ellos y **la elección se guarda en el navegador** (igual que el modo claro/oscuro).
+
+- Añadir un estilo nuevo = copiar un `.css` en `css/` + añadir una línea en `css/themes.js` (ver [css/readme.md](css/readme.md)).
+- Estilos incluidos: **Clásico Oscuro** (`default.css`) y **Ruta de Papel** (`editorial.css`).
 
 ---
 
@@ -39,18 +46,20 @@ Todos los filtros se aplican **en memoria** sobre los 11.000+ registros ya desca
 
 Los filtros disponibles son:
 - **Campo de búsqueda libre**: busca en rótulo, municipio, dirección y código postal.
-- **Selector de provincia** y luego **selector de municipio** (se rellena automáticamente según la provincia elegida).
+- **Lista de resultados paginada**: debajo de las tarjetas hay una barra con selector de **cuántas estaciones cargar por página (10 / 30 / 50)** y botones ▶ ◀ para saltar entre páginas. Con la opción **"♾️ Todas (cargan al bajar)"**, modo lazy: se muestra el primer bloque y al llegar al final del scroll se cargan automáticamente los siguientes, sin límite de estaciones.
+- **Selector de provincia (multiselección)**: pulsándolo se despliega un panel con casillas y un **buscador** — escribe "barcelona" (incluso sin tildes) y filtra al instante; útil en móvil, donde las listas largas cuesten hacer scroll. Puedes dejar **varias provincias seleccionadas a la vez**.
+- **Selector de municipio (multiselección)**: mismo formato de panel con buscador. Puedes elegir **varios municipios, incluso de provincias distintas** (aunque para verlos hay que seleccionar también sus provincias). Si no hay provincias elegidas, se listan todos los de España (usa el buscador: hay unos 8.000). Ideal combinado con la agrupación por municipio: agrupa y compara los municipios elegidos.
 - **Tipo de combustible** (barra superior con pestañas).
-- **Modo GPS en tiempo real**: al pulsar "Mi ubicación", la app sigue tu posición continuamente (`watchPosition`) y muestra solo las gasolineras dentro del radio que configures con el deslizador (2–50 km), actualizándose en tiempo real — pensado para usarlo mientras conduces. Mientras está activo, los filtros de provincia, municipio y búsqueda se bloquean y quedan en gris; pulsa de nuevo el botón para volver a los filtros manuales.
+- **Modo GPS en tiempo real**: al pulsar "Mi ubicación", la app sigue tu posición continuamente (`watchPosition`) y muestra solo las gasolineras dentro del radio que configures (1–50 km, con deslizador o escribiendo el número directamente), actualizándose en tiempo real — pensado para usarlo mientras conduces. Mientras está activo, los filtros de provincia, municipio y búsqueda se bloquean y quedan en gris; pulsa de nuevo el botón para volver a los filtros manuales. Las estaciones con coordenadas rotas en los datos oficiales se excluyen automáticamente en este modo.
 - **Ordenación**: más barato primero, más caro primero, por distancia (requiere activar ubicación GPS), por nombre, por municipio.
-- **Agrupación**: sin agrupar, por municipio, por rótulo/marca, por provincia.
+- **Agrupación**: sin agrupar, por municipio, por rótulo/marca, por provincia. Con las selecciones múltiples de provincia/municipio ahora sí tiene sentido: agrupar por municipio muestra un grupo por cada municipio seleccionado (ordenados por su precio mínimo).
 - **Solo favoritas**: muestra únicamente las gasolineras que hayas marcado como favoritas.
 
 ### Mapa interactivo (`js/map.js`)
 
-Usa **Leaflet** con tiles de **OpenStreetMap** (libres, sin API key ni registro). Los marcadores se agrupan automáticamente con **MarkerCluster** — cuando hay muchos, aparecen como burbujas con el número de gasolineras. Al acercar el zoom se despliegan individualmente.
+Usa **Leaflet** con tiles libres (sin API key ni registro). El botón de capas (abajo a la izquierda) permite elegir entre: **OSM estándar, OSM Francia, Humanitario (HOT), Topográfico (OpenTopoMap), Satélite (Esri) y Minimalista claro (Esri)** — la última elección se recuerda entre visitas. Los marcadores se agrupan automáticamente con **MarkerCluster**; al pulsar un marcador se despliegan individualmente.
 
-En pantallas pequeñas (móvil), el mapa se muestra **siempre al principio** (antes de la lista de precios) e incluye un **botón para ocultar/mostrar** el mapa.
+En pantallas pequeñas (móvil), el mapa se muestra **siempre al principio** (antes de la lista de precios) e incluye un **botón (arriba a la izquierda) para ocultar/mostrar** el mapa.
 
 Cada marcador tiene un color según el precio relativo a la búsqueda actual:
 - 🟢 **Verde**: precio en el 25% más barato de los resultados.
@@ -76,8 +85,8 @@ La URL de la aplicación acepta parámetros GET para preconfigurar filtros. Esto
 | `combustible` | `gasolina95`, `gasoleoA`, `gasolina98`, `gasoleoPremium`, `gasoleoB`, `glp`, `gnc`, `adblue`, `dieselRenovable`, `hidrogeno` | Tipo de combustible a mostrar |
 | `buscar` | Texto libre | Búsqueda en rótulo, municipio, dirección y CP |
 | `rotulo` | Texto libre | Filtro específico por rótulo/marca (puede usar `\|` para OR, ej: `REPSOL\|CAMPSA`) |
-| `provincia` | Nombre exacto en mayúsculas, ej: `BARCELONA` | Filtra por provincia |
-| `municipio` | Nombre exacto, ej: `Manlleu` | Filtra por municipio |
+| `provincia` | Nombre(s) exacto(s), ej: `BARCELONA` o varios separados por `\|`: `BARCELONA\|GIRONA` | Filtra por provincia (multiselección) |
+| `municipio` | Nombre(s) exacto(s), ej: `Manlleu` o varios separados por `\|`: `Manlleu\|Vic` | Filtra por municipio (multiselección, incluso de distintas provincias) |
 | `orden` | `price_asc`, `price_desc`, `rotulo_asc`, `municipio_asc`, `distance_asc` | Criterio de ordenación |
 | `agrupar` | `none`, `municipio`, `rotulo`, `provincia` | Agrupa los resultados |
 | `vista` | `split`, `list`, `tabla`, `map` | Vista inicial al abrir |
@@ -94,20 +103,28 @@ https://tu-usuario.github.io/miteco-carburantes/?rotulo=ESCLATOIL|BONPREU&combus
 https://tu-usuario.github.io/miteco-carburantes/?municipio=Barcelona&combustible=gasoleoA&vista=map
 ```
 
+**Dos municipios (Manlleu y Vic, Barcelona) agrupados por municipio — compara localidades vecinas de un vistazo:**
+```
+https://tu-usuario.github.io/miteco-carburantes/?provincia=BARCELONA&municipio=Manlleu|Vic&agrupar=municipio&combustible=gasolina95
+```
+
 ---
 
 ## Archivos del proyecto
 
 ```
-miteco-carburantes/
-├── index.html          → Estructura HTML de la aplicación (única página)
+./
+├── index.html            → Estructura HTML de la aplicación (única página)
 ├── css/
-│   └── styles.css      → Todo el diseño visual (temas claro/oscuro, mapa, tabla, modales)
+│   ├── themes.js         → Manifest de estilos (cada .css de la carpeta = un estilo)
+│   ├── default.css       → Estilo "Clásico Oscuro" (por defecto)
+│   ├── editorial.css     → Estilo "Ruta de Papel"
+│   └── readme.md         → Cómo crear y añadir estilos nuevos
 └── js/
-    ├── api.js          → Descarga de datos, caché, filtros y motor de búsqueda
-    ├── map.js          → Mapa Leaflet, marcadores y popups
-    ├── chart.js        → Gráfica de distribución de precios y estadísticas
-    └── app.js          → Controlador principal: UI, eventos, tabla, exportación, URL
+    ├── api.js            → Descarga de datos, caché, filtros y motor de búsqueda
+    ├── map.js            → Mapa Leaflet (capas libres), marcadores y popups
+    ├── chart.js          → Gráfica de distribución de precios y estadísticas
+    └── app.js            → Controlador principal: UI, eventos, tabla, selector de estilos, URL
 ```
 
 ---

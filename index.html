@@ -21,8 +21,8 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
-  <!-- App Custom Styles -->
-  <link rel="stylesheet" href="css/styles.css">
+  <!-- App Custom Styles (swappable via the 🎨 style selector; manifest: css/themes.js) -->
+  <link rel="stylesheet" href="css/default.css" id="app-style-link">
 </head>
 
 <body>
@@ -64,6 +64,10 @@
         <button id="btn-theme-toggle" class="btn btn-outline btn-sm">
           ☀️ Modo Claro
         </button>
+
+        <select id="style-selector" class="style-selector" title="Cambiar el estilo visual de la interfaz">
+          <option value="default">Estilos…</option>
+        </select>
       </div>
     </div>
   </header>
@@ -126,13 +130,45 @@
             placeholder="Buscar por municipio, marca, dirección o C.P..." autocomplete="off">
         </div>
 
-        <select id="filter-province" class="select-filter" aria-label="Filtrar por Provincia">
-          <option value="">Todas las Provincias</option>
-        </select>
+        <!-- Multi-select Provincia (con buscador escribiendo, útil en móvil) -->
+        <div class="multi-picker" id="picker-province">
+          <button type="button" class="picker-trigger" id="filter-province" aria-haspopup="listbox"
+            aria-expanded="false" title="Filtrar por provincia (puedes elegir varias)">
+            <span class="picker-summary">Todas las Provincias</span>
+            <span class="picker-caret">▾</span>
+          </button>
+          <div class="picker-panel" hidden>
+            <div class="picker-search-row">
+              <input type="text" class="picker-search" placeholder="🔍 Buscar provincia…"
+                autocomplete="off" aria-label="Buscar provincia">
+            </div>
+            <div class="picker-options" role="listbox" aria-multiselectable="true"></div>
+            <div class="picker-footer">
+              <button type="button" class="picker-clear">✖ Quitar todas</button>
+              <span class="picker-footer-count">0 seleccionadas</span>
+            </div>
+          </div>
+        </div>
 
-        <select id="filter-municipio" class="select-filter" aria-label="Filtrar por Municipio" disabled>
-          <option value="">Todos los Municipios</option>
-        </select>
+        <!-- Multi-select Municipio (con buscador escribiendo, útil en móvil) -->
+        <div class="multi-picker" id="picker-municipio">
+          <button type="button" class="picker-trigger" id="filter-municipio" aria-haspopup="listbox"
+            aria-expanded="false" title="Filtrar por municipio (puedes elegir varios, incluso de distintas provincias)">
+            <span class="picker-summary">Todos los Municipios</span>
+            <span class="picker-caret">▾</span>
+          </button>
+          <div class="picker-panel" hidden>
+            <div class="picker-search-row">
+              <input type="text" class="picker-search" placeholder="🔍 Buscar municipio o ciudad…"
+                autocomplete="off" aria-label="Buscar municipio">
+            </div>
+            <div class="picker-options" role="listbox" aria-multiselectable="true"></div>
+            <div class="picker-footer">
+              <button type="button" class="picker-clear">✖ Quitar todos</button>
+              <span class="picker-footer-count">0 seleccionados</span>
+            </div>
+          </div>
+        </div>
 
         <button id="btn-get-location" class="btn btn-outline btn-sm" title="Activar modo GPS en tiempo real">
           📍 Mi ubicación
@@ -140,8 +176,11 @@
 
         <div id="gps-radius-panel" class="gps-radius-panel" hidden>
           <span class="gps-radius-label">📡 Radio</span>
-          <input type="range" id="gps-radius-slider" class="gps-radius-slider" min="2" max="50" step="1" value="10">
-          <span class="gps-radius-value" id="gps-radius-value">10 km</span>
+          <input type="range" id="gps-radius-slider" class="gps-radius-slider" min="1" max="50" step="1" value="10">
+          <span class="gps-radius-value-box">
+            <input type="text" id="gps-radius-value" class="gps-radius-value" inputmode="numeric"
+              title="Radio en kilómetros (1 - 50). Escribe el valor y pulsa Enter."> km
+          </span>
         </div>
 
         <select id="select-sort-order" class="select-filter" aria-label="Ordenar resultados">
@@ -226,6 +265,23 @@
       <!-- Station Cards List -->
       <div class="stations-list-scroll" id="stations-cards-list">
         <!-- Rendered dynamically -->
+      </div>
+
+      <!-- List Pagination: page controls + page-size + lazy load mode -->
+      <div class="list-pagination-bar" id="list-pagination-bar">
+        <span class="list-count-info" id="list-count-info">--</span>
+        <div class="list-pagination-controls">
+          <select id="list-page-size" class="list-page-size" aria-label="Número de estaciones por página"
+            title="Cuántas estaciones mostrar de golpe en la lista">
+            <option value="10">10 por página</option>
+            <option value="30" selected>30 por página</option>
+            <option value="50">50 por página</option>
+            <option value="lazy">♾️ Todas (cargan al bajar, lazy)</option>
+          </select>
+          <button id="btn-list-prev" class="btn btn-outline btn-sm" title="Página anterior">◀</button>
+          <span id="list-page-indicator" class="list-page-indicator">Página 1 / 1</span>
+          <button id="btn-list-next" class="btn btn-outline btn-sm" title="Página siguiente">▶</button>
+        </div>
       </div>
     </section>
 
@@ -318,6 +374,7 @@
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <!-- App Core JS Modules -->
+  <script src="css/themes.js"></script>
   <script src="js/api.js"></script>
   <script src="js/map.js"></script>
   <script src="js/chart.js"></script>
